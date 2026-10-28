@@ -1,26 +1,111 @@
 @import "tailwindcss";
+@source not "../../public";
 
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+/*
+ * Tokens semânticos. Componentes usam só estes nomes (bg-card, text-ink, border-line…),
+ * nunca a paleta crua, para os dois temas funcionarem sem duplicar classes.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --page: #f4f4f1;
+  --card: #ffffff;
+  --soft: #f1f1ed;
+  --soft-2: #e7e7e1;
+  --line: #e3e3dc;
+  --line-2: #cfcfc6;
+  --ink: #121417;
+  --ink-2: #33373d;
+  --ink-3: #5a5f68;
+  --muted: #80858e;
+  --lula: #dc2626;
+  --flavio: #2563eb;
+  --late: #ca8a04;
+  --late-ink: #a16207;
+  --late-soft: #fdf3d7;
+  --accent: #0f766e;
+  --accent-soft: #e2f3f0;
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --page: #0b0e14;
+  --card: #12161f;
+  --soft: #1a1f2b;
+  --soft-2: #242a38;
+  --line: #232937;
+  --line-2: #343b4c;
+  --ink: #f2f3f5;
+  --ink-2: #d4d7dd;
+  --ink-3: #a0a6b1;
+  --muted: #6f7682;
+  --lula: #ef4444;
+  --flavio: #3b82f6;
+  --late: #f59e0b;
+  --late-ink: #fbbf24;
+  --late-soft: #2b2110;
+  --accent: #2dd4bf;
+  --accent-soft: #0f2b29;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-serif);
+  --color-page: var(--page);
+  --color-card: var(--card);
+  --color-soft: var(--soft);
+  --color-soft-2: var(--soft-2);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-muted: var(--muted);
+  --color-lula: var(--lula);
+  --color-flavio: var(--flavio);
+  --color-late: var(--late);
+  --color-late-ink: var(--late-ink);
+  --color-late-soft: var(--late-soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --shadow-card: var(--shadow);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 72px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--page);
+  color: var(--ink);
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-fino {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+
+/* MapLibre: controles e atribuição no tom do site */
+.maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--card) 80%, transparent) !important;
+  color: var(--muted);
+  font-size: 10px;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--ink-3) !important;
+}
+.maplibregl-canvas:focus-visible {
+  outline: 2px solid var(--accent);
 }
