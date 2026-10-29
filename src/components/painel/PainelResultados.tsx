@@ -18,6 +18,7 @@ import { escreverUrl, lerUrl, linkPara } from "@/lib/url";
 import { cartaoSecao, type DadosCartao } from "@/lib/cartao";
 import { Compartilhar } from "./Compartilhar";
 import { BiometriaPanel } from "./BiometriaPanel";
+import { GanhosPanel } from "./GanhosPanel";
 import { SITE_BASE, type NacionalJson } from "@/lib/site";
 import { MapaEleitoral, type MapScope, type NivelCor } from "@/components/mapa/MapaEleitoral";
 import { BarraResultado } from "@/components/mapa/BarraResultado";
@@ -136,6 +137,7 @@ export function PainelResultados() {
   function irMun(m: Municipio) { setUf(m.uf); setRegiao(regiaoDaUf[m.uf] ?? null); setMun(m); setLocalAberto(null); setSecaoSel(null); }
 
   const irParaBiometria = () => document.getElementById(SECTIONS.BIOMETRIA)?.scrollIntoView({ behavior: "smooth" });
+  const irParaGanhos = () => document.getElementById(SECTIONS.GANHOS)?.scrollIntoView({ behavior: "smooth" });
   const irParaMapa = () => document.getElementById(SECTIONS.RESULTS)?.scrollIntoView({ behavior: "smooth" });
 
   /** 1º turno (Lula × Flávio) do escopo atual, somando os municípios. */
@@ -338,6 +340,18 @@ export function PainelResultados() {
                 onVoltar={() => { irBrasil(); irParaBiometria(); }}
                 onVerMapa={(m) => { setCamada(camadaDaMedida(m)); irParaMapa(); }}
                 onCompartilhar={() => { setMun(null); setLocalAberto(null); setSecaoSel(null); setCartao("escopo"); }} />
+            </div>
+
+            <div id={SECTIONS.GANHOS} className="mx-auto mt-16 max-w-6xl">
+              <Cabecalho kicker="1º → 2º turno" titulo="Onde cada um ganhou ou perdeu votos">
+                Votos de Lula e de Flávio no 1º e no 2º turno, lado a lado.
+                {" "}{uf ? "Clique num município para abri-lo no mapa." : "Clique num estado para ver os municípios dele."}
+              </Cabecalho>
+              <GanhosPanel municipios={municipios} scope={scope} regiaoDaUf={regiaoDaUf}
+                onUf={(u) => { irUf(u); irParaGanhos(); }}
+                onMun={(x) => { irMun(x); setCamada("virada"); irParaMapa(); }}
+                onVoltar={() => { irBrasil(); irParaGanhos(); }}
+                onVerMapa={() => { setCamada("virada"); irParaMapa(); }} />
             </div>
 
             <div className="mx-auto mt-16 max-w-6xl">

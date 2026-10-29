@@ -1,6 +1,7 @@
 export const SECTIONS = {
   RESULTS: "resultados",
   BIOMETRIA: "biometria",
+  GANHOS: "ganhos",
   HERO: "visao-geral",
   TIMELINE: "timeline",
   MAP: "onde",
@@ -13,6 +14,7 @@ export const SECTIONS = {
 export const SECTION_LABELS: Record<string, string> = {
   [SECTIONS.RESULTS]: "Mapa",
   [SECTIONS.BIOMETRIA]: "Biometria",
+  [SECTIONS.GANHOS]: "1º → 2º",
   [SECTIONS.HERO]: "Após 17h",
   [SECTIONS.TIMELINE]: "Minuto a minuto",
   [SECTIONS.MAP]: "Onde",
