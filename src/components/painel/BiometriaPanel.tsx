@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Share2 } from "lucide-react";
+import { ArrowLeft, ArrowUp, Share2 } from "lucide-react";
 import { useTema } from "@/hooks/useTema";
 import {
   MEDIDA_BIO, PALETA, UF_NOME, deltaBio, num, pct, pctBio, ppSinal, qtdBio, somar, toStats,
@@ -21,9 +21,10 @@ interface Linha {
 }
 
 /** Sem biometria no 1º × 2º turno, por estado (ou por município dentro de um estado). */
-export function BiometriaPanel({ resumo, municipios, scope, regiaoDaUf, onUf, onMun, onCompartilhar }: {
+export function BiometriaPanel({ resumo, municipios, scope, regiaoDaUf, onUf, onMun, onVoltar, onVerMapa, onCompartilhar }: {
   resumo: ResumoJson; municipios: Municipio[]; scope: MapScope; regiaoDaUf: Record<string, string>;
-  onUf: (uf: string, m: MedidaBio) => void; onMun: (x: Municipio, m: MedidaBio) => void; onCompartilhar: () => void;
+  onUf: (uf: string, m: MedidaBio) => void; onMun: (x: Municipio, m: MedidaBio) => void;
+  onVoltar: () => void; onVerMapa: (m: MedidaBio) => void; onCompartilhar: () => void;
 }) {
   const p = PALETA[useTema()];
   const [medida, setMedida] = useState<MedidaBio>("falha");
@@ -57,6 +58,20 @@ export function BiometriaPanel({ resumo, municipios, scope, regiaoDaUf, onUf, on
 
   return (
     <div className="rounded-2xl border border-line bg-card p-4 shadow-card md:p-6">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {(scope.uf || scope.regiao) && (
+          <button onClick={onVoltar}
+            className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-soft">
+            <ArrowLeft className="h-3.5 w-3.5" /> Brasil
+          </button>
+        )}
+        <h3 className="font-serif text-xl font-semibold text-ink">{escopoNome}</h3>
+        <span className="text-xs text-muted">· {linhas.length} {unidade}</span>
+        <button onClick={() => onVerMapa(medida)}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-soft">
+          <ArrowUp className="h-3.5 w-3.5" /> Ver no mapa
+        </button>
+      </div>
       <div role="group" aria-label="Medida" className="mb-2 inline-flex max-w-full overflow-x-auto rounded-full border border-line bg-card p-0.5 scrollbar-hide">
         {(Object.keys(MEDIDA_BIO) as MedidaBio[]).map((m) => (
           <button key={m} onClick={() => { setMedida(m); setLimite(30); }} aria-pressed={medida === m}
@@ -110,7 +125,7 @@ export function BiometriaPanel({ resumo, municipios, scope, regiaoDaUf, onUf, on
             <li key={l.id}>
               <button onClick={l.abrir}
                 title={`${l.nome}: 1º ${pct(a)} (${num(qtdBio(l.s, medida, 1))}) → 2º ${pct(b)} (${num(qtdBio(l.s, medida, 2))})`}
-                className="grid w-full grid-cols-[minmax(0,9rem)_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-1.5 py-2 text-left hover:bg-soft sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_9.5rem]">
+                className="grid w-full grid-cols-[minmax(0,8rem)_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-1.5 py-2 text-left hover:bg-soft sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_12.5rem]">
                 <span className="min-w-0 truncate text-sm text-ink">
                   {l.nome}
                   {l.sub && <span className="ml-1 text-[11px] text-muted">{l.sub}</span>}
@@ -129,10 +144,15 @@ export function BiometriaPanel({ resumo, municipios, scope, regiaoDaUf, onUf, on
                       style={{ left: x(b), background: p.bioAlto }} />
                   )}
                 </span>
-                <span className="text-right text-xs tabular-nums">
-                  <span className="text-ink-3">{pct(a)} → </span>
-                  <span className="font-semibold text-ink">{pct(b)}</span>
-                  <span className="ml-1.5 hidden text-muted sm:inline">{ppSinal(deltaBio(l.s, medida), 1).replace(" p.p.", "")}</span>
+                <span className="text-right text-xs leading-tight tabular-nums">
+                  <span className="block">
+                    <span className="text-ink-3">{pct(a)} → </span>
+                    <span className="font-semibold text-ink">{pct(b)}</span>
+                    <span className="ml-1.5 hidden text-muted sm:inline">{ppSinal(deltaBio(l.s, medida), 1).replace(" p.p.", "")}</span>
+                  </span>
+                  <span className="block text-[11px] text-muted">
+                    {num(qtdBio(l.s, medida, 1))} → {num(qtdBio(l.s, medida, 2))}
+                  </span>
                 </span>
               </button>
             </li>

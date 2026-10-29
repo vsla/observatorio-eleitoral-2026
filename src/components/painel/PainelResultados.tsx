@@ -135,6 +135,9 @@ export function PainelResultados() {
   function irUf(u: string) { setUf(u); setRegiao(regiaoDaUf[u] ?? null); setMun(null); setLocalAberto(null); setSecaoSel(null); }
   function irMun(m: Municipio) { setUf(m.uf); setRegiao(regiaoDaUf[m.uf] ?? null); setMun(m); setLocalAberto(null); setSecaoSel(null); }
 
+  const irParaBiometria = () => document.getElementById(SECTIONS.BIOMETRIA)?.scrollIntoView({ behavior: "smooth" });
+  const irParaMapa = () => document.getElementById(SECTIONS.RESULTS)?.scrollIntoView({ behavior: "smooth" });
+
   /** 1º turno (Lula × Flávio) do escopo atual, somando os municípios. */
   function t1Escopo(): { lula: number; flavio: number } {
     const ms = mun ? [mun] : municipios.filter((m) => (uf ? m.uf === uf : regiao ? (regiao === EXTERIOR ? m.uf === "ZZ" : regiaoDaUf[m.uf] === regiao) : true));
@@ -327,11 +330,13 @@ export function PainelResultados() {
                 Eleitores liberados pelo mesário sem reconhecimento da digital, contados no log de cada urna e separados
                 entre quem tinha biometria e teve a digital recusada (o número dos boletins de urna) e quem não tem
                 biometria cadastrada. Escopo: <strong className="text-ink">{uf ? UF_NOME[uf] : regiao && regiao !== EXTERIOR ? regiao : "Brasil"}</strong>.
-                Clique num {uf ? "município" : "estado"} para abrir no mapa; dentro do município, toque numa seção para compartilhar.
+                {" "}{uf ? "Clique num município para abrir no mapa e ver as seções; toque numa seção para compartilhar." : "Clique num estado para ver os municípios dele."}
               </Cabecalho>
               <BiometriaPanel resumo={resumo} municipios={municipios} scope={scope} regiaoDaUf={regiaoDaUf}
-                onUf={(u, m) => { irUf(u); setCamada(camadaDaMedida(m)); document.getElementById(SECTIONS.RESULTS)?.scrollIntoView({ behavior: "smooth" }); }}
-                onMun={(x, m) => { irMun(x); setCamada(camadaDaMedida(m)); document.getElementById(SECTIONS.RESULTS)?.scrollIntoView({ behavior: "smooth" }); }}
+                onUf={(u, m) => { irUf(u); setCamada(camadaDaMedida(m)); irParaBiometria(); }}
+                onMun={(x, m) => { irMun(x); setCamada(camadaDaMedida(m)); irParaMapa(); }}
+                onVoltar={() => { irBrasil(); irParaBiometria(); }}
+                onVerMapa={(m) => { setCamada(camadaDaMedida(m)); irParaMapa(); }}
                 onCompartilhar={() => { setMun(null); setLocalAberto(null); setSecaoSel(null); setCartao("escopo"); }} />
             </div>
 
