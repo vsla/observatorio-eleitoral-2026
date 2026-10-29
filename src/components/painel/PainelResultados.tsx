@@ -142,12 +142,12 @@ export function PainelResultados() {
   }
 
   function dadosEscopo(s: Stats): DadosCartao {
-    const tipo = mun ? "Município" : uf ? "Estado" : regiao ? "Região" : "Brasil";
-    const linhas = mun ? [UF_NOME[mun.uf]] : uf ? [regiaoDaUf[uf] ?? ""] : [`${num(s.secoes)} seções`];
+    const tipo = mun ? "Município" : uf ? "Estado" : regiao ? "Região" : "Resultado nacional";
+    const linhas = mun ? [UF_NOME[mun.uf]] : uf ? [`Região ${regiaoDaUf[uf] ?? ""}`] : [];
     if (capital !== "todos" && !mun) linhas.push(capital === "capitais" ? "Só capitais" : "Só interior");
     return {
       tipo, titulo: escopoNome, linhas, s, t1: t1Escopo(),
-      extras: [["Abstenção", pct(pctAbstencao(s))]],
+      extras: [["Abstenção", pct(pctAbstencao(s))], ["Seções", num(s.secoes)]],
       link: linkPara({ regiao, uf, mun: mun?.cdTse, camada }),
       arquivo: `observatorio-${(mun?.nome ?? uf ?? regiao ?? "brasil").toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-")}`,
     };

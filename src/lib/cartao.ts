@@ -84,6 +84,34 @@ function retangulo(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.fill();
 }
 
+/** Texto numa linha: reduz a fonte até caber (ou até o mínimo, e então corta com reticências). */
+function ajustar(ctx: CanvasRenderingContext2D, texto: string, largura: number, peso: string, tam: number, min: number, familia: string) {
+  let t = tam;
+  ctx.font = `${peso} ${t}px ${familia}`;
+  while (t > min && ctx.measureText(texto).width > largura) {
+    t -= 2;
+    ctx.font = `${peso} ${t}px ${familia}`;
+  }
+  if (ctx.measureText(texto).width <= largura) return texto;
+  let u = texto;
+  while (u.length && ctx.measureText(`${u}…`).width > largura) u = u.slice(0, -1);
+  return `${u.trimEnd()}…`;
+}
+
+/** 8.323.916 → "8,32 mi"; 357.632 → "358 mil"; números pequenos ficam inteiros. */
+function qtdCurta(n: number): string {
+  if (n >= 1e6) return `${(n / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: n >= 1e8 ? 1 : 2 })} mi`;
+  if (n >= 1e5) return `${Math.round(n / 1e3).toLocaleString("pt-BR")} mil`;
+  return num(n);
+}
+
+interface Bloco {
+  h: number;
+  desenhar: (y: number) => void;
+}
+
+const CARD_H = 1254;
+
 export async function desenharCartao(d: DadosCartao, formato: Formato): Promise<HTMLCanvasElement> {
   const { w: W, h: H } = FORMATOS[formato];
   const c = lerCores();
@@ -98,185 +126,183 @@ export async function desenharCartao(d: DadosCartao, formato: Formato): Promise<
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
-  const M = 72;
-  const L = W - 2 * M;
+  ctx.textBaseline = "alphabetic";
 
+  const cardX = 48;
+  const cardW = W - 2 * cardX;
+  const cardY = (H - CARD_H) / 2;
+  const X = cardX + 56;
+  const LX = cardW - 112;
+  const direita = X + LX;
+
+  const texto = (t: string, x: number, y: number, fonte: string, cor: string, alinhar: CanvasTextAlign = "left") => {
+    ctx.font = fonte;
+    ctx.fillStyle = cor;
+    ctx.textAlign = alinhar;
+    ctx.fillText(t, x, y);
+    ctx.textAlign = "left";
+  };
+
+  // ---- fundo e moldura ----
   ctx.fillStyle = c.page;
   ctx.fillRect(0, 0, W, H);
-  if (formato === "story") {
-    ctx.fillStyle = c.ink;
-    ctx.font = `700 46px ${f.serif}`;
-    ctx.textAlign = "center";
-    const alvo = d.tipo === "Seção eleitoral" ? "esta seção" : d.titulo;
-    ctx.fillText(quebrar(ctx, `Como votou ${alvo}?`, W - 2 * M, 1)[0], W / 2, (H - (FORMATOS.post.h - 112)) / 2 - 70);
-    ctx.font = `400 28px ${f.sans}`;
-    ctx.fillStyle = c.ink3;
-    ctx.fillText(d.tipo === "Seção eleitoral" ? "Confira a sua seção no link" : "Veja estado, cidade e seção no link", W / 2, H - (H - (FORMATOS.post.h - 112)) / 2 + 90);
-    ctx.textAlign = "left";
-  }
-
-  // cartão central
-  // mesmo cartão nos dois formatos; no story ele fica centralizado
-  const cardH = FORMATOS.post.h - 112;
-  const cardY = (H - cardH) / 2;
-  retangulo(ctx, M - 24, cardY, L + 48, cardH, 36, c.card);
+  retangulo(ctx, cardX, cardY, cardW, CARD_H, 36, c.card);
   ctx.strokeStyle = c.line;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.roundRect(M - 24, cardY, L + 48, cardH, 36);
+  ctx.roundRect(cardX, cardY, cardW, CARD_H, 36);
   ctx.stroke();
 
-  const X = M + 24;
-  const LX = L - 48;
-  let y = cardY + 76;
-  ctx.textBaseline = "alphabetic";
-
-  ctx.fillStyle = c.accent;
-  ctx.font = `600 26px ${f.sans}`;
-  ctx.fillText("OBSERVATÓRIO ELEITORAL 2026", X, y);
-  ctx.fillStyle = c.muted;
-  ctx.textAlign = "right";
-  ctx.fillText("PRESIDENTE · 2º TURNO", X + LX, y);
-  ctx.textAlign = "left";
-
-  y += 64;
-  ctx.fillStyle = c.ink3;
-  ctx.font = `600 28px ${f.sans}`;
-  ctx.fillText(d.tipo.toUpperCase(), X, y);
-
-  y += 72;
-  ctx.fillStyle = c.ink;
-  ctx.font = `700 68px ${f.serif}`;
-  for (const l of quebrar(ctx, d.titulo, LX, 2)) {
-    ctx.fillText(l, X, y);
-    y += 76;
+  if (formato === "story") {
+    const alvo = d.tipo === "Seção eleitoral" ? "esta seção" : d.titulo;
+    texto(ajustar(ctx, `Como votou ${alvo}?`, W - 160, "700", 52, 36, f.serif), W / 2, cardY - 84, ctx.font, c.ink, "center");
+    texto(d.tipo === "Seção eleitoral" ? "Confira a sua seção no link" : "Estado, cidade e seção no link",
+      W / 2, cardY + CARD_H + 108, `400 30px ${f.sans}`, c.ink3, "center");
   }
-  y -= 16;
-  ctx.fillStyle = c.ink3;
-  ctx.font = `400 32px ${f.sans}`;
-  for (const linha of d.linhas) {
-    for (const l of quebrar(ctx, linha, LX, 2)) {
-      y += 44;
-      ctx.fillText(l, X, y);
-    }
+
+  const s = d.s;
+  const blocos: Bloco[] = [];
+
+  // ---- cabeçalho ----
+  blocos.push({
+    h: 28,
+    desenhar: (y) => {
+      texto("OBSERVATÓRIO ELEITORAL 2026", X, y + 26, `600 24px ${f.sans}`, c.accent);
+      texto("PRESIDENTE · 2º TURNO", direita, y + 26, `600 24px ${f.sans}`, c.muted, "right");
+    },
+  });
+
+  // ---- título ----
+  const kicker = d.tipo.toLowerCase() === d.titulo.toLowerCase() ? "" : d.tipo.toUpperCase();
+  let tamTitulo = 80;
+  ctx.font = `700 ${tamTitulo}px ${f.serif}`;
+  while (tamTitulo > 54 && quebrar(ctx, d.titulo, LX, 3).length > 2) {
+    tamTitulo -= 4;
+    ctx.font = `700 ${tamTitulo}px ${f.serif}`;
   }
+  const linhasTitulo = quebrar(ctx, d.titulo, LX, 2);
+  ctx.font = `400 30px ${f.sans}`;
+  const linhasSub = d.linhas.filter(Boolean).flatMap((l) => quebrar(ctx, l, LX, 2)).slice(0, 3);
+  const altTitulo = linhasTitulo.length * tamTitulo * 1.08;
+  blocos.push({
+    h: (kicker ? 44 : 0) + altTitulo + linhasSub.length * 42,
+    desenhar: (y) => {
+      let yy = y;
+      if (kicker) {
+        texto(kicker, X, yy + 26, `600 26px ${f.sans}`, c.ink3);
+        yy += 44;
+      }
+      for (const l of linhasTitulo) {
+        yy += tamTitulo * 1.08;
+        texto(l, X, yy - tamTitulo * 0.2, `700 ${tamTitulo}px ${f.serif}`, c.ink);
+      }
+      for (const l of linhasSub) {
+        yy += 42;
+        texto(l, X, yy - 8, `400 30px ${f.sans}`, c.ink3);
+      }
+    },
+  });
 
   // ---- resultado ----
-  const s = d.s;
   const p = pctLula(s);
-  y += 92;
-  ctx.font = `700 84px ${f.serif}`;
-  ctx.fillStyle = c.lula;
-  ctx.fillText(pct(p), X, y);
-  ctx.textAlign = "right";
-  ctx.fillStyle = c.flavio;
-  ctx.fillText(pct(1 - p), X + LX, y);
-  ctx.textAlign = "left";
-  y += 44;
-  ctx.font = `600 30px ${f.sans}`;
-  ctx.fillStyle = c.ink;
-  ctx.fillText("Lula", X, y);
-  ctx.textAlign = "right";
-  ctx.fillText("Flávio Bolsonaro", X + LX, y);
-  ctx.textAlign = "left";
-  y += 38;
-  ctx.font = `400 26px ${f.sans}`;
-  ctx.fillStyle = c.muted;
-  ctx.fillText(`${num(s.lula)} votos`, X, y);
-  ctx.textAlign = "right";
-  ctx.fillText(`${num(s.flavio)} votos`, X + LX, y);
-  ctx.textAlign = "left";
+  const temT1 = !!d.t1 && d.t1.lula + d.t1.flavio > 0;
+  blocos.push({
+    h: 240 + (temT1 ? 50 : 0),
+    desenhar: (y) => {
+      texto("Lula", X, y + 30, `600 30px ${f.sans}`, c.ink);
+      texto("Flávio Bolsonaro", direita, y + 30, `600 30px ${f.sans}`, c.ink, "right");
+      texto(pct(p), X, y + 122, `700 90px ${f.serif}`, c.lula);
+      texto(pct(1 - p), direita, y + 122, `700 90px ${f.serif}`, c.flavio, "right");
+      texto(`${num(s.lula)} votos`, X, y + 164, `400 26px ${f.sans}`, c.muted);
+      texto(`${num(s.flavio)} votos`, direita, y + 164, `400 26px ${f.sans}`, c.muted, "right");
+      const by = y + 188;
+      const wl = Number.isFinite(p) ? LX * p : LX / 2;
+      retangulo(ctx, X, by, Math.max(0, wl - 3), 40, 12, c.lula);
+      retangulo(ctx, X + wl + 3, by, Math.max(0, LX - wl - 3), 40, 12, c.flavio);
+      ctx.fillStyle = c.ink;
+      ctx.fillRect(X + LX / 2 - 2, by - 10, 4, 60);
+      if (temT1) {
+        const t = d.t1!.lula / (d.t1!.lula + d.t1!.flavio);
+        texto(`No 1º turno, entre os dois: Lula ${pct(t)} · Flávio ${pct(1 - t)}`, X, by + 92, `400 26px ${f.sans}`, c.ink3);
+      }
+    },
+  });
 
-  y += 28;
-  const bh = 34;
-  const wl = Number.isFinite(p) ? LX * p : LX / 2;
-  retangulo(ctx, X, y, Math.max(0, wl - 2), bh, 10, c.lula);
-  retangulo(ctx, X + wl + 2, y, Math.max(0, LX - wl - 2), bh, 10, c.flavio);
-  ctx.fillStyle = c.ink;
-  ctx.fillRect(X + LX / 2 - 1.5, y - 8, 3, bh + 16);
-  y += bh;
-
-  if (d.t1 && d.t1.lula + d.t1.flavio > 0) {
-    const t = d.t1.lula / (d.t1.lula + d.t1.flavio);
-    y += 46;
-    ctx.font = `400 28px ${f.sans}`;
-    ctx.fillStyle = c.ink3;
-    ctx.fillText(`1º turno (entre os dois): Lula ${pct(t)} · Flávio ${pct(1 - t)}`, X, y);
-  }
-
-  // ---- biometria ----
+  // ---- digital recusada (1º × 2º) ----
   const p1 = pctBio(s, "falha", 1);
   const p2 = pctBio(s, "falha", 2);
   if (Number.isFinite(p1) || Number.isFinite(p2)) {
-    y += 78;
-    ctx.fillStyle = c.line;
-    ctx.fillRect(X, y - 44, LX, 2);
-    ctx.fillStyle = c.ink;
-    ctx.font = `600 34px ${f.sans}`;
-    ctx.fillText("Digital recusada pela urna", X, y);
-    ctx.textAlign = "right";
-    ctx.fillStyle = c.ink2;
-    ctx.font = `600 30px ${f.sans}`;
-    ctx.fillText(ppSinal(deltaBio(s, "falha")), X + LX, y);
-    ctx.textAlign = "left";
-
-    const escala = Math.min(1, Math.max(Number.isFinite(p1) ? p1 : 0, Number.isFinite(p2) ? p2 : 0, 0.01) * 1.15);
-    const rotW = 150;
-    const valW = 300;
-    const barW = LX - rotW - valW;
+    const escala = Math.max(Number.isFinite(p1) ? p1 : 0, Number.isFinite(p2) ? p2 : 0, 0.005) * 1.1;
+    const t1 = pctBio(s, "total", 1);
+    const t2 = pctBio(s, "total", 2);
     const linhas: [string, number, number, number, string][] = [
       ["1º turno", p1, s.fal1, s.hab1, c.bio1],
       ["2º turno", p2, s.fal2, s.hab2, c.bio],
     ];
-    for (const [rot, v, n, tot, cor] of linhas) {
-      y += 62;
-      ctx.font = `400 28px ${f.sans}`;
-      ctx.fillStyle = c.ink3;
-      ctx.fillText(rot, X, y);
-      retangulo(ctx, X + rotW, y - 26, barW, 30, 8, c.soft);
-      if (Number.isFinite(v)) retangulo(ctx, X + rotW, y - 26, Math.max(10, (barW * v) / escala), 30, 8, cor);
-      ctx.textAlign = "right";
-      ctx.fillStyle = c.ink;
-      ctx.font = `600 30px ${f.sans}`;
-      ctx.fillText(Number.isFinite(v) ? `${pct(v)} · ${num(n)} de ${num(tot)}` : "sem log", X + LX, y);
-      ctx.textAlign = "left";
-    }
-    // o total inclui quem não tem biometria cadastrada (a urna nem pede a digital)
-    y += 50;
-    ctx.font = `400 24px ${f.sans}`;
-    ctx.fillStyle = c.muted;
-    const t1 = pctBio(s, "total", 1);
-    const t2 = pctBio(s, "total", 2);
-    ctx.fillText(
-      `Total liberado sem digital (inclui sem cadastro): 1º ${pct(t1)} · 2º ${pct(t2)}`, X, y);
+    blocos.push({
+      h: 52 + linhas.length * 84 + 40,
+      desenhar: (y) => {
+        ctx.fillStyle = c.line;
+        ctx.fillRect(X, y, LX, 2);
+        texto("Digital recusada pela urna", X, y + 52, `600 32px ${f.sans}`, c.ink);
+        const dl = deltaBio(s, "falha");
+        if (Number.isFinite(dl)) texto(ppSinal(dl), direita, y + 52, `600 28px ${f.sans}`, c.ink2, "right");
+        let yy = y + 52;
+        for (const [rot, v, n, tot, cor] of linhas) {
+          yy += 52;
+          texto(rot, X, yy, `400 28px ${f.sans}`, c.ink3);
+          if (Number.isFinite(v)) {
+            const detalhe = `  ·  ${qtdCurta(n)} de ${qtdCurta(tot)}`;
+            ctx.font = `400 26px ${f.sans}`;
+            const wDet = ctx.measureText(detalhe).width;
+            texto(detalhe, direita, yy, ctx.font, c.muted, "right");
+            texto(pct(v), direita - wDet, yy, `700 32px ${f.sans}`, c.ink, "right");
+          } else {
+            texto("sem registro no log", direita, yy, `400 26px ${f.sans}`, c.muted, "right");
+          }
+          retangulo(ctx, X, yy + 14, LX, 16, 8, c.soft);
+          if (Number.isFinite(v)) retangulo(ctx, X, yy + 14, Math.max(16, (LX * v) / escala), 16, 8, cor);
+          yy += 32;
+        }
+        texto(ajustar(ctx, `Contando também quem não tem biometria cadastrada: 1º ${pct(t1)} · 2º ${pct(t2)} sem digital`,
+          LX, "400", 24, 18, f.sans), X, yy + 34, ctx.font, c.muted);
+      },
+    });
   }
 
-  // ---- extras ----
-  const extras: [string, string][] = [
-    ["Votantes", num(s.comp)],
-    ["Brancos e nulos", pct(pctBrancoNulo(s))],
-    ...(d.extras ?? []),
-  ].slice(0, 4) as [string, string][];
-  y += 90;
-  const colW = LX / extras.length;
-  extras.forEach(([k, v], i) => {
-    ctx.font = `400 24px ${f.sans}`;
-    ctx.fillStyle = c.muted;
-    ctx.fillText(k, X + i * colW, y);
-    ctx.font = `600 34px ${f.sans}`;
-    ctx.fillStyle = c.ink;
-    ctx.fillText(v, X + i * colW, y + 44);
+  // ---- números ----
+  const extras = ([["Votantes", num(s.comp)], ["Brancos e nulos", pct(pctBrancoNulo(s))], ...(d.extras ?? [])] as [string, string][])
+    .slice(0, 4);
+  blocos.push({
+    h: 96,
+    desenhar: (y) => {
+      ctx.fillStyle = c.line;
+      ctx.fillRect(X, y, LX, 2);
+      const colW = LX / extras.length;
+      extras.forEach(([k, v], i) => {
+        const x = X + i * colW;
+        texto(ajustar(ctx, k, colW - 16, "400", 24, 18, f.sans), x, y + 46, ctx.font, c.muted);
+        texto(ajustar(ctx, v, colW - 16, "600", 36, 24, f.sans), x, y + 90, ctx.font, c.ink);
+      });
+    },
   });
 
-  // ---- rodapé ----
-  const fimCard = cardY + cardH;
-  ctx.font = `400 22px ${f.sans}`;
-  ctx.fillStyle = c.muted;
-  ctx.fillText("Fonte: TSE, boletins e logs de urna. O voto é secreto: números por seção.", X, fimCard - 92);
-  ctx.font = `600 26px ${f.sans}`;
-  ctx.fillStyle = c.accent;
-  const link = d.link.replace(/^https?:\/\//, "");
-  ctx.fillText(quebrar(ctx, link, LX, 1)[0], X, fimCard - 50);
+  // ---- distribui o espaço livre entre os blocos; rodapé preso embaixo ----
+  const topo = cardY + 56;
+  const rodapeH = 76;
+  const base = cardY + CARD_H - 52 - rodapeH - 28;
+  const ocupado = blocos.reduce((a, b) => a + b.h, 0);
+  const gap = Math.min(72, Math.max(24, (base - topo - ocupado) / (blocos.length - 1 || 1)));
+  let y = topo;
+  for (const b of blocos) {
+    b.desenhar(y);
+    y += b.h + gap;
+  }
+
+  const fy = cardY + CARD_H - 52;
+  texto(ajustar(ctx, "Fonte: TSE, boletins e logs de urna. O voto é secreto: números por seção, não por eleitor.", LX, "400", 22, 16, f.sans),
+    X, fy - 40, ctx.font, c.muted);
+  texto(ajustar(ctx, d.link.replace(/^https?:\/\//, ""), LX, "600", 26, 16, f.sans), X, fy, ctx.font, c.accent);
 
   return canvas;
 }
