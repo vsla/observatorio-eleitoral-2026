@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowUp, Share2 } from "lucide-react";
 import { useTema } from "@/hooks/useTema";
 import {
-  MEDIDA_BIO, PALETA, UF_NOME, deltaBio, num, pct, pctBio, ppSinal, qtdBio, somar, toStats,
+  MEDIDA_BIO, PALETA, UF_NOME, deltaBio, fundoVencedor, textoVencedor, num, pct, pctBio, ppSinal, qtdBio, somar, toStats,
   type MedidaBio, type Municipio, type ResumoJson, type Stats,
 } from "@/lib/mapa";
 import type { MapScope } from "@/components/mapa/MapaEleitoral";
@@ -105,6 +105,11 @@ export function BiometriaPanel({ resumo, municipios, scope, regiaoDaUf, onUf, on
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.bioAlto }} /> 2º turno
           </span>
+          <span className="hidden items-center gap-1.5 sm:inline-flex">
+            <span className="h-2.5 w-8 rounded-sm" style={{ backgroundImage: "linear-gradient(to right, transparent, color-mix(in srgb, var(--lula) 35%, transparent))" }} />
+            <span className="h-2.5 w-8 rounded-sm" style={{ backgroundImage: "linear-gradient(to right, transparent, color-mix(in srgb, var(--flavio) 35%, transparent))" }} />
+            fundo = quem venceu o 2º turno
+          </span>
         </div>
         <select value={ordem} onChange={(e) => { setOrdem(e.target.value as Ordem); setLimite(30); }} aria-label="Ordenar"
           className="rounded-full border border-line bg-card px-3 py-1.5 text-xs text-ink-2">
@@ -123,10 +128,11 @@ export function BiometriaPanel({ resumo, municipios, scope, regiaoDaUf, onUf, on
           const hi = Math.max(a, b);
           return (
             <li key={l.id}>
-              <button onClick={l.abrir}
-                title={`${l.nome}: 1º ${pct(a)} (${num(qtdBio(l.s, medida, 1))}) → 2º ${pct(b)} (${num(qtdBio(l.s, medida, 2))})`}
+              <button onClick={l.abrir} style={{ backgroundImage: fundoVencedor(l.s) }}
+                title={`${l.nome}: 1º ${pct(a)} (${num(qtdBio(l.s, medida, 1))}) → 2º ${pct(b)} (${num(qtdBio(l.s, medida, 2))}) · ${textoVencedor(l.s)}`}
                 className="grid w-full grid-cols-[minmax(0,8rem)_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-1.5 py-2 text-left hover:bg-soft sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_12.5rem]">
                 <span className="min-w-0 truncate text-sm text-ink">
+                  <span className="sr-only">{textoVencedor(l.s)}: </span>
                   {l.nome}
                   {l.sub && <span className="ml-1 text-[11px] text-muted">{l.sub}</span>}
                 </span>

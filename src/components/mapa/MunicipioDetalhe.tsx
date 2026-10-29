@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Search, Share2 } from "lucide-react";
 import { formatTime } from "@/lib/format";
 import {
-  SUBGRUPO_LABEL, deltaBio, margem, num, pct, pctBio, pctLula, pp, ppSinal, statsSecao, statsSecoes,
+  SUBGRUPO_LABEL, deltaBio, fundoVencedor, textoVencedor, margem, num, pct, pctBio, pctLula, pp, ppSinal, statsSecao, statsSecoes,
   type MunDetalheJson, type SecaoRow,
 } from "@/lib/mapa";
 import { BarraResultado } from "./BarraResultado";
@@ -136,7 +136,8 @@ function TabelaSecoes({ secoes, destaque, onSecao }: {
               <tr key={`${r[0]}-${r[1]}`}
                 className={`border-t border-line ${onSecao ? "cursor-pointer hover:bg-soft-2" : ""} ${ativa ? "bg-accent-soft" : ""}`}
                 onClick={onSecao ? () => onSecao(r) : undefined}
-                title={`${num(s.comp)} votantes · ${pp(margem(s))} · Lula ${pct(pctLula(s))} · digital falhou 1º ${pct(pctBio(s, "falha", 1))} → 2º ${pct(pctBio(s, "falha", 2))} · total sem digital 2º ${pct(pctBio(s, "total", 2))}`}>
+                style={{ backgroundImage: fundoVencedor(s) }}
+                title={`${textoVencedor(s)} · ${num(s.comp)} votantes · ${pp(margem(s))} · Lula ${pct(pctLula(s))} · digital falhou 1º ${pct(pctBio(s, "falha", 1))} → 2º ${pct(pctBio(s, "falha", 2))} · total sem digital 2º ${pct(pctBio(s, "total", 2))}`}>
                 <td className="px-2 py-1">{r[0]}/{r[1]}</td>
                 <td className="px-2 py-1 text-right">{num(s.lula)}</td>
                 <td className="px-2 py-1 text-right">{num(s.flavio)}</td>

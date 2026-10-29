@@ -411,6 +411,25 @@ export function corCamada(c: Camada, v: number, dom: [number, number], p: Paleta
   return corSeq(v, dom[0], dom[1], alto, p);
 }
 
+/**
+ * Fundo de linha que termina na cor de quem venceu (degradê da esquerda para a direita);
+ * a intensidade acompanha a margem. Sem votos válidos ou empate: sem fundo.
+ */
+export function fundoVencedor(s: Stats): string | undefined {
+  const v = vencedor(s);
+  if (v !== "lula" && v !== "flavio") return undefined;
+  const t = Math.min(Math.abs(margem(s)) / MARGEM_MAX, 1);
+  const forca = Math.round(10 + 28 * t);
+  return `linear-gradient(to right, transparent 45%, color-mix(in srgb, var(--${v}) ${forca}%, transparent))`;
+}
+
+export const textoVencedor = (s: Stats) => {
+  const v = vencedor(s);
+  if (v !== "lula" && v !== "flavio") return "Empate ou sem votos válidos";
+  const p = pctLula(s);
+  return `Venceu ${v === "lula" ? "Lula" : "Flávio"} (${pct(v === "lula" ? p : 1 - p)})`;
+};
+
 /** Pontos percentuais com sinal: +1,2 p.p. */
 export const ppSinal = (d: number, casas = 1) =>
   Number.isFinite(d)
