@@ -10,6 +10,9 @@ interface UseJsonDataResult<T> {
 
 const cache = new Map<string, unknown>();
 
+const VERSAO = process.env.NEXT_PUBLIC_DATA_V;
+const comVersao = (path: string) => (VERSAO ? `${path}${path.includes("?") ? "&" : "?"}v=${VERSAO}` : path);
+
 interface Loaded {
   path: string;
   data: unknown;
@@ -24,7 +27,7 @@ export function useJsonData<T>(path: string | null): UseJsonDataResult<T> {
     if (!path || cache.has(path)) return;
     let cancelled = false;
 
-    fetch(path)
+    fetch(comVersao(path))
       .then((res) => {
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         return res.json();
