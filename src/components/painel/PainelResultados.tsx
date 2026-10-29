@@ -1,17 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowDown, ChevronRight, Clock, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ChevronRight, Clock, Search, Share2, X } from "lucide-react";
 import { SECTIONS } from "@/lib/constants";
 import { useJsonData } from "@/hooks/useJsonData";
 import { useTema } from "@/hooks/useTema";
 import {
   CAMADAS, MAPA_BASE, MARGEM_MAX, PALETA, REGIOES, SUBGRUPO_LABEL, UF_NOME, VIRADA_LABEL,
-  corMargem, corSeq, dominio, margem, num, parseEspeciais, parseMunicipios, pct, pctAbstencao,
-  pctBrancoNulo, pctLula, pctPos17, pp, somar, toStats, valorCamada, vencedor, viradaCor,
+  camadaBio, corCamada, corMargem, deltaSem, dominioCamada, margem, num, parseEspeciais, parseMunicipios, pct,
+  pctAbstencao, pctBrancoNulo, pctLula, pctPos17, pctSem1, pctSem2, pp, ppSinal, somar, statsSecoes,
+  toStats, vencedor, viradaCor,
   type Camada, type LocalEspecial, type MunDetalheJson, type Municipio, type MunicipiosJson,
-  type PerfilJson, type ResumoJson, type Stats, type Subgrupo, type Virada,
+  type PerfilJson, type ResumoJson, type SecaoRow, type Stats, type Subgrupo, type Virada,
 } from "@/lib/mapa";
+import { escreverUrl, lerUrl, linkPara } from "@/lib/url";
+import { cartaoSecao, type DadosCartao } from "@/lib/cartao";
+import { Compartilhar } from "./Compartilhar";
+import { BiometriaPanel } from "./BiometriaPanel";
 import { SITE_BASE, type NacionalJson } from "@/lib/site";
 import { MapaEleitoral, type MapScope, type NivelCor } from "@/components/mapa/MapaEleitoral";
 import { BarraResultado } from "@/components/mapa/BarraResultado";
@@ -48,6 +53,8 @@ export function PainelResultados() {
   const [capital, setCapital] = useState<FiltroCapital>("todos");
   const [subgrupo, setSubgrupo] = useState<Subgrupo | null>(null);
   const [localAberto, setLocalAberto] = useState<number | null>(null);
+  const [secaoSel, setSecaoSel] = useState<{ zona: number; secao: number } | null>(null);
+  const [cartao, setCartao] = useState<"escopo" | null>(null);
 
   const municipios = useMemo(() => (munJson ? parseMunicipios(munJson) : []), [munJson]);
   const especiais = useMemo(() => (espJson ? parseEspeciais(espJson) : []), [espJson]);
@@ -60,6 +67,44 @@ export function PainelResultados() {
   const { data: detalhe, loading: carregandoDetalhe } = useJsonData<MunDetalheJson>(
     mun ? `${MAPA_BASE}/mun/${mun.cdTse}.json` : null
   );
+
+  // ---- estado na URL: abre o link compartilhado e mantém a barra de endereço em dia ----
+  const urlAplicada = useRef(false);
+  useEffect(() => {
+    if (urlAplicada.current || !resumo || !municipios.length) return;
+    urlAplicada.current = true;
+    const u = lerUrl();
+    const m = u.mun != null ? municipios.find((x) => x.cdTse === u.mun) : undefined;
+    const ufUrl = m?.uf ?? (u.uf && resumo.ufs[u.uf] ? u.uf : null);
+    /* eslint-disable react-hooks/set-state-in-effect -- sincronização única com a URL ao carregar */
+    if (u.camada) setCamada(u.camada);
+    if (ufUrl) {
+      setUf(ufUrl);
+      setRegiao(resumo.ufs[ufUrl]?.regiao ?? null);
+    } else if (u.regiao && (resumo.regioes[u.regiao] || u.regiao === EXTERIOR)) setRegiao(u.regiao);
+    if (m) setMun(m);
+    if (m && u.zona != null && u.secao != null) setSecaoSel({ zona: u.zona, secao: u.secao });
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [resumo, municipios]);
+
+  useEffect(() => {
+    if (!urlAplicada.current) return;
+    escreverUrl({ regiao, uf, mun: mun?.cdTse, zona: secaoSel?.zona, secao: secaoSel?.secao, camada });
+  }, [regiao, uf, mun, secaoSel, camada]);
+
+  // seção vinda do link: abre o local que a contém
+  let secaoInfo: { local: number; row: SecaoRow } | null = null;
+  if (secaoSel && detalhe && mun && detalhe.cd_tse === mun.cdTse) {
+    for (let i = 0; i < detalhe.locais.length && !secaoInfo; i++) {
+      const row = detalhe.locais[i].secoes.find((r) => r[0] === secaoSel.zona && r[1] === secaoSel.secao);
+      if (row) secaoInfo = { local: i, row };
+    }
+  }
+  const localDaSecao = secaoInfo?.local ?? null;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- abre o local da seção do link
+    if (localDaSecao != null) setLocalAberto(localDaSecao);
+  }, [localDaSecao]);
 
   const passaFiltro = (m: Municipio) =>
     capital === "todos" ? true : capital === "capitais" ? m.capital : !m.capital;
@@ -84,10 +129,34 @@ export function PainelResultados() {
   const pontos: LocalEspecial[] = subgrupo && subgrupo !== "exterior" && subgrupo !== "convencional"
     ? especiais.filter((e) => e.subgrupo === subgrupo) : [];
 
-  function irBrasil() { setRegiao(null); setUf(null); setMun(null); setLocalAberto(null); }
-  function irRegiao(r: string) { setRegiao(r); setUf(null); setMun(null); setLocalAberto(null); }
-  function irUf(u: string) { setUf(u); setRegiao(regiaoDaUf[u] ?? null); setMun(null); setLocalAberto(null); }
-  function irMun(m: Municipio) { setUf(m.uf); setRegiao(regiaoDaUf[m.uf] ?? null); setMun(m); setLocalAberto(null); }
+  function irBrasil() { setRegiao(null); setUf(null); setMun(null); setLocalAberto(null); setSecaoSel(null); }
+  function irRegiao(r: string) { setRegiao(r); setUf(null); setMun(null); setLocalAberto(null); setSecaoSel(null); }
+  function irUf(u: string) { setUf(u); setRegiao(regiaoDaUf[u] ?? null); setMun(null); setLocalAberto(null); setSecaoSel(null); }
+  function irMun(m: Municipio) { setUf(m.uf); setRegiao(regiaoDaUf[m.uf] ?? null); setMun(m); setLocalAberto(null); setSecaoSel(null); }
+
+  /** 1º turno (Lula × Flávio) do escopo atual, somando os municípios. */
+  function t1Escopo(): { lula: number; flavio: number } {
+    const ms = mun ? [mun] : municipios.filter((m) => (uf ? m.uf === uf : regiao ? (regiao === EXTERIOR ? m.uf === "ZZ" : regiaoDaUf[m.uf] === regiao) : true));
+    return ms.reduce((a, m) => ({ lula: a.lula + m.t1Lula, flavio: a.flavio + m.t1Flavio }), { lula: 0, flavio: 0 });
+  }
+
+  function dadosEscopo(s: Stats): DadosCartao {
+    const tipo = mun ? "Município" : uf ? "Estado" : regiao ? "Região" : "Brasil";
+    const linhas = mun ? [UF_NOME[mun.uf]] : uf ? [regiaoDaUf[uf] ?? ""] : [`${num(s.secoes)} seções`];
+    if (capital !== "todos" && !mun) linhas.push(capital === "capitais" ? "Só capitais" : "Só interior");
+    return {
+      tipo, titulo: escopoNome, linhas, s, t1: t1Escopo(),
+      extras: [["Abstenção", pct(pctAbstencao(s))]],
+      link: linkPara({ regiao, uf, mun: mun?.cdTse, camada }),
+      arquivo: `observatorio-${(mun?.nome ?? uf ?? regiao ?? "brasil").toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-")}`,
+    };
+  }
+
+  function dadosSecao(local: number, row: SecaoRow): DadosCartao | null {
+    if (!detalhe || !mun) return null;
+    const l = detalhe.locais[local];
+    return cartaoSecao({ uf: detalhe.uf, cdTse: mun.cdTse, municipio: detalhe.nome, local: l.nome, bairro: l.bairro, row });
+  }
 
   const scope: MapScope = { regiao: regiao === EXTERIOR ? null : regiao, uf };
   const pronto = resumo && munJson && perfil;
@@ -159,7 +228,7 @@ export function PainelResultados() {
                 </div>
 
                 {regiao !== EXTERIOR && (
-                  <Legenda camada={camada} lista={lista} nivel={uf ? "municipios" : nivel} resumo={resumo} mun={mun}
+                  <Legenda camada={camada} lista={lista} nivel={uf ? "municipios" : nivel} resumo={resumo} mun={mun} detalhe={detalhe}
                     subgrupo={subgrupo} onLimparSubgrupo={() => setSubgrupo(null)} />
                 )}
               </div>
@@ -183,12 +252,18 @@ export function PainelResultados() {
                         {capital !== "todos" && !mun ? (capital === "capitais" ? " · só capitais" : " · só interior") : ""}
                       </p>
                     </div>
-                    {(uf || regiao) && (
-                      <button onClick={irBrasil} aria-label="Voltar ao Brasil" title="Voltar ao Brasil"
-                        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-3 hover:bg-soft">
-                        <X className="h-4 w-4" />
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button onClick={() => setCartao("escopo")} aria-label={`Compartilhar ${escopoNome}`} title="Compartilhar (link e imagem)"
+                        className="grid h-7 w-7 place-items-center rounded-full text-ink-3 hover:bg-soft hover:text-ink">
+                        <Share2 className="h-4 w-4" />
                       </button>
-                    )}
+                      {(uf || regiao) && (
+                        <button onClick={irBrasil} aria-label="Voltar ao Brasil" title="Voltar ao Brasil"
+                          className="grid h-7 w-7 place-items-center rounded-full text-ink-3 hover:bg-soft">
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <BarraResultado s={escopoStats} />
                   <dl className="mt-3 grid grid-cols-3 gap-x-3 gap-y-2 text-sm">
@@ -199,6 +274,9 @@ export function PainelResultados() {
                     <Dado k="Seções" v={num(escopoStats.secoes)} />
                     <Dado k="Após 17h" v={num(escopoStats.pos17)} destaque={escopoStats.pos17 > 0}
                       titulo={`${pct(pctPos17(escopoStats), 3)} do comparecimento${!uf && !regiao ? " (inclui exterior em hora local)" : ""}`} />
+                    <Dado k="Sem bio · 1º" v={pct(pctSem1(escopoStats))} titulo={`${num(escopoStats.sem1)} de ${num(escopoStats.hab1)} eleitores habilitados no log`} />
+                    <Dado k="Sem bio · 2º" v={pct(pctSem2(escopoStats))} titulo={`${num(escopoStats.sem2)} de ${num(escopoStats.hab2)} eleitores habilitados no log`} />
+                    <Dado k="Variação" v={ppSinal(deltaSem(escopoStats), 2)} titulo="Fatia sem biometria: 2º turno menos 1º turno" />
                   </dl>
                 </div>
 
@@ -211,7 +289,8 @@ export function PainelResultados() {
                           ← {UF_NOME[mun.uf]}
                         </button>
                       </div>
-                      <MunicipioDetalhe data={detalhe} loading={carregandoDetalhe} aberto={localAberto} onAberto={setLocalAberto} />
+                      <MunicipioDetalhe data={detalhe} loading={carregandoDetalhe} aberto={localAberto} onAberto={setLocalAberto}
+                        secao={secaoSel} onSecao={(_, r) => setSecaoSel({ zona: r[0], secao: r[1] })} />
                     </>
                   ) : regiao !== EXTERIOR ? (
                     <ListaMunicipios lista={lista} onSelect={irMun} titulo={uf ? "Municípios" : "Maiores municípios"} />
@@ -235,12 +314,27 @@ export function PainelResultados() {
                 regiaoDaUf={regiaoDaUf} ativo={subgrupo} onAtivo={setSubgrupo} />
             </div>
 
+            <div id={SECTIONS.BIOMETRIA} className="mx-auto mt-16 max-w-6xl">
+              <Cabecalho kicker="1º × 2º turno" titulo="Quem votou sem biometria">
+                Eleitores liberados pelo mesário sem reconhecimento da digital, contados no log de cada urna.
+                Escopo: <strong className="text-ink">{uf ? UF_NOME[uf] : regiao && regiao !== EXTERIOR ? regiao : "Brasil"}</strong>.
+                Clique num {uf ? "município" : "estado"} para abrir no mapa; dentro do município, toque numa seção para compartilhar.
+              </Cabecalho>
+              <BiometriaPanel resumo={resumo} municipios={municipios} scope={scope} regiaoDaUf={regiaoDaUf}
+                onUf={(u) => { irUf(u); setCamada("sem_bio2"); document.getElementById(SECTIONS.RESULTS)?.scrollIntoView({ behavior: "smooth" }); }}
+                onMun={(m) => { irMun(m); setCamada("sem_bio2"); document.getElementById(SECTIONS.RESULTS)?.scrollIntoView({ behavior: "smooth" }); }}
+                onCompartilhar={() => { setMun(null); setLocalAberto(null); setSecaoSel(null); setCartao("escopo"); }} />
+            </div>
+
             <div className="mx-auto mt-16 max-w-6xl">
               <Cabecalho kicker="Quem vota onde" titulo="Perfil do eleitorado">
                 Como votaram as seções conforme a composição do seu eleitorado (idade, escolaridade, gênero, biometria).
               </Cabecalho>
               <PerfilPanel perfil={perfil} escopo={uf ?? (regiao && regiao !== EXTERIOR ? regiao : "BR")} />
             </div>
+
+            {cartao === "escopo" && <ModalEscopo dados={dadosEscopo(escopoStats)} onFechar={() => setCartao(null)} />}
+            {secaoInfo && <ModalSecao dados={dadosSecao(secaoInfo.local, secaoInfo.row)} onFechar={() => setSecaoSel(null)} />}
           </>
         )}
       </div>
@@ -249,6 +343,25 @@ export function PainelResultados() {
 }
 
 // ---------- peças ----------
+
+// Os dados do cartão mudam de identidade a cada render; memoizar pelo link evita redesenhar a imagem à toa.
+function ModalEscopo({ dados, onFechar }: { dados: DadosCartao; onFechar: () => void }) {
+  return <ModalCartao dados={dados} onFechar={onFechar} />;
+}
+
+function ModalSecao({ dados, onFechar }: { dados: DadosCartao | null; onFechar: () => void }) {
+  return dados ? <ModalCartao dados={dados} onFechar={onFechar} /> : null;
+}
+
+function ModalCartao({ dados, onFechar }: { dados: DadosCartao; onFechar: () => void }) {
+  const chave = `${dados.link}|${dados.titulo}|${dados.s.comp}`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const estavel = useMemo(() => dados, [chave]);
+  const fechar = useRef(onFechar);
+  useEffect(() => { fechar.current = onFechar; });
+  const onFecharEstavel = useMemo(() => () => fechar.current(), []);
+  return <Compartilhar dados={estavel} onFechar={onFecharEstavel} />;
+}
 
 function Cabecalho({ kicker, titulo, children }: { kicker: string; titulo: string; children?: React.ReactNode }) {
   return (
@@ -522,9 +635,9 @@ function ListaMunicipios({ lista, onSelect, titulo }: { lista: Municipio[]; onSe
   );
 }
 
-function Legenda({ camada, lista, nivel, resumo, mun, subgrupo, onLimparSubgrupo }: {
+function Legenda({ camada, lista, nivel, resumo, mun, detalhe, subgrupo, onLimparSubgrupo }: {
   camada: Camada; lista: Municipio[]; nivel: NivelCor; resumo: ResumoJson; mun: Municipio | null;
-  subgrupo: Subgrupo | null; onLimparSubgrupo: () => void;
+  detalhe: MunDetalheJson | null; subgrupo: Subgrupo | null; onLimparSubgrupo: () => void;
 }) {
   const p = PALETA[useTema()];
   const desc = CAMADAS.find((c) => c.id === camada)!.desc;
@@ -572,21 +685,29 @@ function Legenda({ camada, lista, nivel, resumo, mun, subgrupo, onLimparSubgrupo
       </div>
     );
   } else {
-    const valores = nivel === "estados"
-      ? Object.entries(resumo.ufs).filter(([u]) => u !== "ZZ").map(([, v]) => valorCamada(camada, toStats(v.s)))
-      : lista.map((m) => valorCamada(camada, m));
-    const [lo, hi] = dominio(valores);
-    const alto = camada === "pos17" ? p.pos17Alto : p.seqAlto;
+    // com município aberto e camada de biometria, a escala é a dos locais de votação
+    const itens: Stats[] = mun && camadaBio(camada) && detalhe?.cd_tse === mun.cdTse
+      ? detalhe.locais.map((l) => statsSecoes(l.secoes))
+      : nivel === "estados"
+        ? Object.entries(resumo.ufs).filter(([u]) => u !== "ZZ").map(([, v]) => toStats(v.s))
+        : lista;
+    const dom = dominioCamada(camada, itens);
+    const [lo, hi] = dom;
+    const div = camada === "sem_bio_delta";
     const d = camada === "pos17" ? 3 : 1;
     corpo = (
       <>
         <div className="flex h-2 w-52 gap-[2px]">
           {Array.from({ length: 7 }, (_, i) => lo + ((hi - lo) * i) / 6).map((v, i) => (
-            <div key={i} className="flex-1 first:rounded-l-full last:rounded-r-full" style={{ background: corSeq(v, lo, hi, alto, p) }} />
+            <div key={i} className="flex-1 first:rounded-l-full last:rounded-r-full" style={{ background: corCamada(camada, v, dom, p) }} />
           ))}
         </div>
         <div className="mt-0.5 flex w-52 justify-between text-[10px] text-muted tabular-nums">
-          <span>{pct(lo, d)}</span><span>{pct(hi, d)}</span>
+          {div ? (
+            <><span>{ppSinal(lo)}</span><span>0</span><span>{ppSinal(hi)}</span></>
+          ) : (
+            <><span>{pct(lo, d)}</span><span>{pct(hi, d)}</span></>
+          )}
         </div>
       </>
     );
@@ -604,7 +725,9 @@ function Legenda({ camada, lista, nivel, resumo, mun, subgrupo, onLimparSubgrupo
         {corpo}
         <p className="mt-1.5 max-w-60 text-[10px] leading-snug text-muted">
           {mun
-            ? "Círculos = locais de votação (tamanho = votantes; borda amarela = teve voto após 17h)."
+            ? camadaBio(camada)
+              ? `Círculos = locais de votação, cor = ${camada === "sem_bio_delta" ? "variação" : "fatia"} sem biometria (tamanho = votantes).`
+              : "Círculos = locais de votação (tamanho = votantes; borda amarela = teve voto após 17h)."
             : camada === "margem" ? "Intensidade = margem sobre os votos válidos." : desc}
         </p>
       </div>

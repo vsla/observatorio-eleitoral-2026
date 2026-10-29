@@ -1,29 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, Share2 } from "lucide-react";
 import { formatTime } from "@/lib/format";
 import {
-  SUBGRUPO_LABEL, margem, num, pct, pctLula, pp,
-  type MunDetalheJson, type SecaoRow, type Stats,
+  SUBGRUPO_LABEL, deltaSem, margem, num, pct, pctLula, pctSem1, pctSem2, pp, ppSinal, statsSecao, statsSecoes,
+  type MunDetalheJson, type SecaoRow,
 } from "@/lib/mapa";
 import { BarraResultado } from "./BarraResultado";
 
 const PAGINA = 60;
-
-function stats(sec: SecaoRow[]): Stats {
-  const s: Stats = { secoes: 0, aptos: 0, comp: 0, lula: 0, flavio: 0, bn: 0, pos17: 0 };
-  for (const r of sec) {
-    s.secoes++;
-    s.aptos += r[2] ?? 0;
-    s.comp += r[3] ?? 0;
-    s.lula += r[4] ?? 0;
-    s.flavio += r[5] ?? 0;
-    s.bn += r[6] ?? 0;
-    s.pos17 += r[7] ?? 0;
-  }
-  return s;
-}
 
 interface Props {
   data: MunDetalheJson | null;
@@ -31,9 +17,12 @@ interface Props {
   /** índice (em data.locais) do local expandido — controlado de fora para o mapa poder abrir um local */
   aberto: number | null;
   onAberto: (i: number | null) => void;
+  /** seção destacada (zona, seção) */
+  secao?: { zona: number; secao: number } | null;
+  onSecao?: (local: number, row: SecaoRow) => void;
 }
 
-export function MunicipioDetalhe({ data, loading, aberto, onAberto }: Props) {
+export function MunicipioDetalhe({ data, loading, aberto, onAberto, secao, onSecao }: Props) {
   const [busca, setBusca] = useState("");
   const [limite, setLimite] = useState(PAGINA);
   const lista = useRef<HTMLUListElement>(null);
@@ -48,7 +37,7 @@ export function MunicipioDetalhe({ data, loading, aberto, onAberto }: Props) {
     if (!data) return [];
     const q = busca.trim().toUpperCase();
     return data.locais
-      .map((l, i) => ({ ...l, i, s: stats(l.secoes) }))
+      .map((l, i) => ({ ...l, i, s: statsSecoes(l.secoes) }))
       .filter((l) => !q || l.nome.toUpperCase().includes(q) || (l.bairro ?? "").toUpperCase().includes(q)
         || l.secoes.some((r) => String(r[1]) === q))
       .sort((a, b) => b.s.comp - a.s.comp);
@@ -60,7 +49,7 @@ export function MunicipioDetalhe({ data, loading, aberto, onAberto }: Props) {
   const visiveis = locais.slice(0, limite);
   if (aberto != null && !visiveis.some((l) => l.i === aberto)) {
     const l = data.locais[aberto];
-    if (l) visiveis.unshift({ ...l, i: aberto, s: stats(l.secoes) });
+    if (l) visiveis.unshift({ ...l, i: aberto, s: statsSecoes(l.secoes) });
   }
 
   return (
@@ -81,7 +70,7 @@ export function MunicipioDetalhe({ data, loading, aberto, onAberto }: Props) {
       <ul ref={lista} className="min-h-[240px] flex-1 space-y-1.5 overflow-y-auto pr-1 scroll-fino">
         {visiveis.map((l) => (
           <li key={l.i} data-local={l.i}
-            className={`rounded-xl border ${aberto === l.i ? "border-line-2 bg-soft" : "border-line bg-card"}`}>
+            className={`overflow-hidden rounded-xl border ${aberto === l.i ? "border-line-2 bg-soft" : "border-line bg-card"}`}>
             <button
               onClick={() => onAberto(aberto === l.i ? null : l.i)}
               className="w-full text-left p-2.5 flex gap-2 items-start"
@@ -103,7 +92,9 @@ export function MunicipioDetalhe({ data, loading, aberto, onAberto }: Props) {
                 <BarraResultado s={l.s} compacta />
               </div>
             </button>
-            {aberto === l.i && <TabelaSecoes secoes={l.secoes} />}
+            {aberto === l.i && (
+              <TabelaSecoes secoes={l.secoes} destaque={secao} onSecao={onSecao ? (r) => onSecao(l.i, r) : undefined} />
+            )}
           </li>
         ))}
       </ul>
@@ -117,35 +108,54 @@ export function MunicipioDetalhe({ data, loading, aberto, onAberto }: Props) {
   );
 }
 
-function TabelaSecoes({ secoes }: { secoes: SecaoRow[] }) {
+function TabelaSecoes({ secoes, destaque, onSecao }: {
+  secoes: SecaoRow[]; destaque?: { zona: number; secao: number } | null; onSecao?: (r: SecaoRow) => void;
+}) {
   return (
     <div className="overflow-x-auto border-t border-line">
+      {onSecao && <p className="px-2 pt-1.5 text-[11px] text-muted">Toque numa seção para ver 1º × 2º turno e compartilhar.</p>}
       <table className="w-full text-xs tabular-nums">
         <caption className="sr-only">Resultado por seção</caption>
         <thead className="text-muted">
           <tr>
             <th className="px-2 py-1.5 text-left font-medium">Zona/Seção</th>
-            <th className="px-2 py-1.5 text-right font-medium">Compar.</th>
             <th className="px-2 py-1.5 text-right font-medium" style={{ color: "var(--lula)" }}>Lula</th>
             <th className="px-2 py-1.5 text-right font-medium" style={{ color: "var(--flavio)" }}>Flávio</th>
-            <th className="px-2 py-1.5 text-right font-medium">Br+Nu</th>
             <th className="px-2 py-1.5 text-right font-medium" title="Votos após 17h (Brasília) no log da urna">Pós-17h</th>
             <th className="px-2 py-1.5 text-right font-medium" title="Horário do último voto (Brasília)">Últ. voto</th>
+            <th className="px-2 py-1.5 text-right font-medium" title="Eleitores sem biometria no 2º turno (variação desde o 1º)">S/ bio</th>
+            {onSecao && <th className="w-6"><span className="sr-only">Compartilhar</span></th>}
           </tr>
         </thead>
         <tbody className="text-ink-2">
           {secoes.map((r) => {
-            const s = { secoes: 1, aptos: r[2] ?? 0, comp: r[3] ?? 0, lula: r[4] ?? 0, flavio: r[5] ?? 0, bn: r[6] ?? 0, pos17: r[7] ?? 0 };
+            const s = statsSecao(r);
+            const ativa = destaque?.zona === r[0] && destaque?.secao === r[1];
+            const d = deltaSem(s);
             return (
-              <tr key={`${r[0]}-${r[1]}`} className="border-t border-line"
-                title={`${pp(margem(s))} · Lula ${pct(pctLula(s))}`}>
+              <tr key={`${r[0]}-${r[1]}`}
+                className={`border-t border-line ${onSecao ? "cursor-pointer hover:bg-soft-2" : ""} ${ativa ? "bg-accent-soft" : ""}`}
+                onClick={onSecao ? () => onSecao(r) : undefined}
+                title={`${num(s.comp)} votantes · ${pp(margem(s))} · Lula ${pct(pctLula(s))} · sem biometria 1º ${pct(pctSem1(s))} → 2º ${pct(pctSem2(s))}`}>
                 <td className="px-2 py-1">{r[0]}/{r[1]}</td>
-                <td className="px-2 py-1 text-right">{num(s.comp)}</td>
                 <td className="px-2 py-1 text-right">{num(s.lula)}</td>
                 <td className="px-2 py-1 text-right">{num(s.flavio)}</td>
-                <td className="px-2 py-1 text-right">{num(s.bn)}</td>
                 <td className={`px-2 py-1 text-right ${s.pos17 > 0 ? "text-late-ink" : ""}`}>{r[7] ?? "—"}</td>
                 <td className="px-2 py-1 text-right">{r[8] != null ? formatTime(r[8]) : "—"}</td>
+                <td className="whitespace-nowrap px-2 py-1 text-right">
+                  {pct(pctSem2(s), 0)}
+                  {Number.isFinite(d) && Math.abs(d) >= 0.005 && (
+                    <span className="ml-1 text-[10px] text-muted">{ppSinal(d, 0).replace(" p.p.", "")}</span>
+                  )}
+                </td>
+                {onSecao && (
+                  <td className="pr-2">
+                    <button onClick={(e) => { e.stopPropagation(); onSecao(r); }} aria-label={`Ver e compartilhar seção ${r[1]}`}
+                      className="grid h-6 w-6 place-items-center rounded-full text-ink-3 hover:bg-soft hover:text-ink">
+                      <Share2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                )}
               </tr>
             );
           })}

@@ -20,16 +20,24 @@ export interface Paleta {
   seqBaixo: string;
   seqAlto: string;
   pos17Alto: string;
+  /** sem biometria: polo "mais" (sequencial e divergente) */
+  bioAlto: string;
+  /** sem biometria: polo "menos" da variação 1º → 2º turno */
+  bioBaixo: string;
+  /** marcador do 1º turno nas comparações de biometria */
+  bioT1: string;
 }
 
 export const PALETA: Record<Tema, Paleta> = {
   light: {
     lula: "#dc2626", flavio: "#2563eb", neutro: "#e6e4df", vazio: "#ebeae6", borda: "#ffffff",
     seqBaixo: "#f1f0ec", seqAlto: "#0e7490", pos17Alto: "#ca8a04",
+    bioAlto: "#9333ea", bioBaixo: "#0891b2", bioT1: "#8b8f97",
   },
   dark: {
     lula: "#ef4444", flavio: "#3b82f6", neutro: "#3a4152", vazio: "#1a1f2b", borda: "#0b0e14",
     seqBaixo: "#1a1f2b", seqAlto: "#38bdf8", pos17Alto: "#f59e0b",
+    bioAlto: "#d946ef", bioBaixo: "#0fa89b", bioT1: "#8b93a1",
   },
 };
 
@@ -51,33 +59,39 @@ export interface Stats {
   flavio: number;
   bn: number;
   pos17: number;
+  /** eleitores habilitados no log da urna e quantos sem biometria, por turno */
+  hab1: number;
+  sem1: number;
+  hab2: number;
+  sem2: number;
 }
 
+const CAMPOS_STATS = ["secoes", "aptos", "comp", "lula", "flavio", "bn", "pos17", "hab1", "sem1", "hab2", "sem2"] as const;
+
+export const statsVazio = (): Stats =>
+  ({ secoes: 0, aptos: 0, comp: 0, lula: 0, flavio: 0, bn: 0, pos17: 0, hab1: 0, sem1: 0, hab2: 0, sem2: 0 });
+
 export function toStats(a: number[], offset = 0): Stats {
-  return {
-    secoes: a[offset],
-    aptos: a[offset + 1],
-    comp: a[offset + 2],
-    lula: a[offset + 3],
-    flavio: a[offset + 4],
-    bn: a[offset + 5],
-    pos17: a[offset + 6],
-  };
+  const s = statsVazio();
+  CAMPOS_STATS.forEach((k, i) => { s[k] = a[offset + i] ?? 0; });
+  return s;
 }
 
 export function somar(list: Stats[]): Stats {
-  const s: Stats = { secoes: 0, aptos: 0, comp: 0, lula: 0, flavio: 0, bn: 0, pos17: 0 };
-  for (const x of list) {
-    s.secoes += x.secoes;
-    s.aptos += x.aptos;
-    s.comp += x.comp;
-    s.lula += x.lula;
-    s.flavio += x.flavio;
-    s.bn += x.bn;
-    s.pos17 += x.pos17;
-  }
+  const s = statsVazio();
+  for (const x of list) for (const k of CAMPOS_STATS) s[k] += x[k];
   return s;
 }
+
+/** Uma seção do arquivo do município como Stats. */
+export function statsSecao(r: SecaoRow): Stats {
+  return {
+    secoes: 1, aptos: r[2] ?? 0, comp: r[3] ?? 0, lula: r[4] ?? 0, flavio: r[5] ?? 0, bn: r[6] ?? 0,
+    pos17: r[7] ?? 0, hab1: r[13] ?? 0, sem1: r[14] ?? 0, hab2: r[15] ?? 0, sem2: r[16] ?? 0,
+  };
+}
+
+export const statsSecoes = (sec: SecaoRow[]) => somar(sec.map(statsSecao));
 
 export const validos = (s: Stats) => s.lula + s.flavio;
 export const pctLula = (s: Stats) => (validos(s) ? s.lula / validos(s) : NaN);
@@ -85,6 +99,10 @@ export const margem = (s: Stats) => (validos(s) ? (s.lula - s.flavio) / validos(
 export const pctAbstencao = (s: Stats) => (s.aptos ? 1 - s.comp / s.aptos : NaN);
 export const pctBrancoNulo = (s: Stats) => (s.comp ? s.bn / s.comp : NaN);
 export const pctPos17 = (s: Stats) => (s.comp ? s.pos17 / s.comp : NaN);
+export const pctSem1 = (s: Stats) => (s.hab1 ? s.sem1 / s.hab1 : NaN);
+export const pctSem2 = (s: Stats) => (s.hab2 ? s.sem2 / s.hab2 : NaN);
+/** variação da fatia sem biometria do 1º para o 2º turno (fração; ×100 = p.p.) */
+export const deltaSem = (s: Stats) => pctSem2(s) - pctSem1(s);
 export const vencedor = (s: Stats): "lula" | "flavio" | "empate" | null =>
   validos(s) === 0 ? null : s.lula > s.flavio ? "lula" : s.flavio > s.lula ? "flavio" : "empate";
 
@@ -122,9 +140,9 @@ export function parseMunicipios(j: MunicipiosJson): Municipio[] {
     uf: r[2] as string,
     nome: r[3] as string,
     capital: r[4] as boolean,
-    ...toStats(r as number[], 5),
-    t1Lula: r[12] as number,
-    t1Flavio: r[13] as number,
+    t1Lula: r[5] as number,
+    t1Flavio: r[6] as number,
+    ...toStats(r as number[], 7),
   }));
 }
 
@@ -174,12 +192,14 @@ export interface MunDetalheJson {
 
 /**
  * [zona, secao, aptos, comp, lula, flavio, bn, pos17, ultimo_voto, abertura, primeiro_voto,
- *  votos por hora 6h..21h (Brasília), horário de cada voto após 17h]
- * Campos do log são null quando a seção não tem log publicado.
+ *  votos por hora 6h..21h (Brasília), horário de cada voto após 17h,
+ *  habilitados 1º turno, sem biometria 1º, habilitados 2º, sem biometria 2º, Lula 1º turno, Flávio 1º turno]
+ * Campos do log são null quando a seção não tem log publicado (ou o log não guardou o 1º turno).
  */
 export type SecaoRow = [
   number, number, number, number, number, number, number,
   number | null, number | null, number | null, number | null, number[] | null, number[] | null,
+  number | null, number | null, number | null, number | null, number | null, number | null,
 ];
 
 // ---------- Geografia ----------
@@ -235,7 +255,8 @@ export const SUBGRUPO_NOTA: Record<Subgrupo, string> = {
 
 // ---------- Camadas e cores ----------
 
-export type Camada = "margem" | "virada" | "abstencao" | "branco_nulo" | "pos17";
+export type Camada =
+  | "margem" | "virada" | "abstencao" | "branco_nulo" | "pos17" | "sem_bio1" | "sem_bio2" | "sem_bio_delta";
 
 export const CAMADAS: { id: Camada; label: string; desc: string }[] = [
   { id: "margem", label: "Vencedor e margem", desc: "Cor = quem venceu; intensidade = margem sobre os votos válidos." },
@@ -243,7 +264,12 @@ export const CAMADAS: { id: Camada; label: string; desc: string }[] = [
   { id: "abstencao", label: "Abstenção", desc: "Eleitores aptos que não compareceram." },
   { id: "branco_nulo", label: "Brancos e nulos", desc: "Brancos + nulos sobre o comparecimento." },
   { id: "pos17", label: "Votos após 17h", desc: "Votos registrados no log da urna após 17h (Brasília), sobre o comparecimento." },
+  { id: "sem_bio2", label: "Sem biometria · 2º turno", desc: "Eleitores liberados pelo mesário sem reconhecimento da digital, sobre os habilitados no log. Mesma escala do 1º turno." },
+  { id: "sem_bio1", label: "Sem biometria · 1º turno", desc: "Eleitores liberados pelo mesário sem reconhecimento da digital, sobre os habilitados no log. Mesma escala do 2º turno." },
+  { id: "sem_bio_delta", label: "Sem biometria · variação 1º → 2º", desc: "Diferença, em pontos percentuais, da fatia sem biometria entre o 1º e o 2º turno." },
 ];
+
+export const camadaBio = (c: Camada) => c.startsWith("sem_bio");
 
 function hexToRgb(h: string): [number, number, number] {
   const n = parseInt(h.slice(1), 16);
@@ -301,6 +327,39 @@ export function corSeq(v: number, lo: number, hi: number, alto: string, p: Palet
   return mix(p.seqBaixo, alto, 0.1 + 0.9 * ((v - lo) / (hi - lo || 1)));
 }
 
+/** Escala divergente para a variação: neutro no zero, saturada em ±max. */
+export function corDiv(v: number, max: number, p: Paleta = PALETA.light): string {
+  if (Number.isNaN(v)) return p.vazio;
+  const t = Math.min(Math.abs(v) / (max || 1), 1);
+  return mix(p.neutro, v >= 0 ? p.bioAlto : p.bioBaixo, 0.12 + 0.88 * t);
+}
+
+/** Domínio de uma camada sobre um conjunto de unidades (municípios, estados, locais). */
+export function dominioCamada(c: Camada, itens: Stats[]): [number, number] {
+  if (c === "margem" || c === "virada") return [0, 1];
+  if (c === "sem_bio_delta") {
+    const a = itens.map((s) => Math.abs(deltaSem(s))).filter(Number.isFinite).sort((x, y) => x - y);
+    const m = a.length ? a[Math.floor(a.length * 0.98)] : 0;
+    return [-(m || 0.01), m || 0.01];
+  }
+  // 1º e 2º turno na mesma escala, para a comparação visual valer
+  if (camadaBio(c)) return dominio(itens.flatMap((s) => [pctSem1(s), pctSem2(s)]));
+  return dominio(itens.map((s) => valorCamada(c, s)));
+}
+
+/** Cor de um valor numa camada não categórica. */
+export function corCamada(c: Camada, v: number, dom: [number, number], p: Paleta): string {
+  if (c === "sem_bio_delta") return corDiv(v, dom[1], p);
+  const alto = c === "pos17" ? p.pos17Alto : camadaBio(c) ? p.bioAlto : p.seqAlto;
+  return corSeq(v, dom[0], dom[1], alto, p);
+}
+
+/** Pontos percentuais com sinal: +1,2 p.p. */
+export const ppSinal = (d: number, casas = 1) =>
+  Number.isFinite(d)
+    ? `${d > 0 ? "+" : d < 0 ? "−" : "±"}${Math.abs(d * 100).toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas })} p.p.`
+    : "—";
+
 /** Domínio das escalas sequenciais: percentis 2–98 para não deixar outliers dominarem. */
 export function dominio(values: number[]): [number, number] {
   const v = values.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
@@ -318,6 +377,12 @@ export function valorCamada(c: Camada, s: Stats): number {
       return pctBrancoNulo(s);
     case "pos17":
       return pctPos17(s);
+    case "sem_bio1":
+      return pctSem1(s);
+    case "sem_bio2":
+      return pctSem2(s);
+    case "sem_bio_delta":
+      return deltaSem(s);
     default:
       return NaN;
   }

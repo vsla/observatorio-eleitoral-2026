@@ -2,16 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { CheckCircle2, ExternalLink, Search, XCircle } from "lucide-react";
+import { CheckCircle2, ExternalLink, Search, Share2, XCircle } from "lucide-react";
 import { useJsonData } from "@/hooks/useJsonData";
 import { SECTIONS } from "@/lib/constants";
 import {
-  MAPA_BASE, SUBGRUPO_LABEL, UF_NOME, num, parseMunicipios, pct,
+  MAPA_BASE, SUBGRUPO_LABEL, UF_NOME, deltaSem, num, parseMunicipios, pct, pctSem1, pctSem2, ppSinal, statsSecao,
   type MunDetalheJson, type Municipio, type MunicipiosJson, type SecaoRow, type Subgrupo,
 } from "@/lib/mapa";
 import { hhmm, hhmmss, ouvirConfira, urlTseSecao } from "@/lib/site";
 import { Panel, SectionHeader, Skeleton } from "@/components/shared/Section";
 import { BarraResultado } from "@/components/mapa/BarraResultado";
+import { Compartilhar } from "@/components/painel/Compartilhar";
+import { cartaoSecao } from "@/lib/cartao";
 
 interface SecaoSel {
   row: SecaoRow;
@@ -153,12 +155,24 @@ function DetalheSecao({ s, mun }: { s: SecaoSel; mun: Municipio }) {
   const votosLog = horas ? horas.reduce((a, b) => a + b, 0) : null;
   const conc = votosLog != null && Math.abs(votosLog - comp) <= Math.max(1, comp * 0.01);
   const serie = (horas ?? []).map((v, i) => ({ h: 6 + i, v }));
-  const st = { secoes: 1, aptos, comp, lula, flavio, bn, pos17: pos17 ?? 0 };
+  const st = statsSecao(s.row);
   const url = urlTseSecao(mun.uf, mun.cdTse, zona, secao);
+  const [compartilhando, setCompartilhando] = useState(false);
+  const cartao = useMemo(
+    () => cartaoSecao({ uf: mun.uf, cdTse: mun.cdTse, municipio: mun.nome, local: s.local, bairro: s.bairro, row: s.row }),
+    [mun, s]
+  );
 
   return (
     <Panel>
-      <p className="text-xs text-muted">{mun.nome} ({mun.uf}) · Zona {zona} · Seção {secao}</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs text-muted">{mun.nome} ({mun.uf}) · Zona {zona} · Seção {secao}</p>
+        <button onClick={() => setCompartilhando(true)}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1 text-xs font-medium text-ink-2 hover:bg-soft">
+          <Share2 className="h-3.5 w-3.5" /> Compartilhar
+        </button>
+      </div>
+      {compartilhando && <Compartilhar dados={cartao} onFechar={() => setCompartilhando(false)} />}
       <h3 className="text-lg font-semibold text-ink leading-tight">{s.local}</h3>
       <p className="text-xs text-muted mb-4">
         {s.bairro}{s.subgrupo !== "convencional" && <span className="ml-1.5 rounded bg-soft-2 px-1.5 py-0.5 text-ink-2">{SUBGRUPO_LABEL[s.subgrupo]}</span>}
@@ -168,6 +182,9 @@ function DetalheSecao({ s, mun }: { s: SecaoSel; mun: Municipio }) {
       <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-sm">
         <D k="Lula" v={num(lula)} /><D k="Flávio" v={num(flavio)} />
         <D k="Brancos + nulos" v={num(bn)} /><D k="Comparecimento" v={`${num(comp)} de ${num(aptos)}`} />
+        <D k="Sem biometria · 1º turno" v={st.hab1 ? `${num(st.sem1)} (${pct(pctSem1(st))})` : "—"} />
+        <D k="Sem biometria · 2º turno" v={st.hab2 ? `${num(st.sem2)} (${pct(pctSem2(st))})` : "—"} />
+        <D k="Variação" v={ppSinal(deltaSem(st))} />
       </dl>
 
       <div className="mt-6 pt-5 border-t border-line">

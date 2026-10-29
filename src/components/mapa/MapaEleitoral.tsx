@@ -14,9 +14,10 @@ import { useJsonData } from "@/hooks/useJsonData";
 import { useTema } from "@/hooks/useTema";
 import {
   MAPA_BASE, NOME, PALETA, UF_IBGE, UF_NOME,
-  corMargem, corSeq, dominio, margem, num, pct, pctLula, pp, toStats, valorCamada, vencedor, virada, viradaCor,
+  camadaBio, corCamada, corMargem, deltaSem, dominioCamada, margem, num, pct, pctLula, pctSem1, pctSem2, pp, ppSinal,
+  statsSecoes, toStats, valorCamada, vencedor, virada, viradaCor,
   type Camada, type LocalEspecial, type Municipio, type MunDetalheJson, type Paleta, type ResumoJson,
-  type SecaoRow, type Stats, type Tema,
+  type Stats, type Tema,
 } from "@/lib/mapa";
 
 export interface MapScope {
@@ -107,20 +108,6 @@ function centroRotulo(g: Geometry): [number, number] {
     }
   }
   return melhor;
-}
-
-function statsLocal(sec: SecaoRow[]): Stats {
-  const s: Stats = { secoes: 0, aptos: 0, comp: 0, lula: 0, flavio: 0, bn: 0, pos17: 0 };
-  for (const r of sec) {
-    s.secoes += 1;
-    s.aptos += r[2] ?? 0;
-    s.comp += r[3] ?? 0;
-    s.lula += r[4] ?? 0;
-    s.flavio += r[5] ?? 0;
-    s.bn += r[6] ?? 0;
-    s.pos17 += r[7] ?? 0;
-  }
-  return s;
 }
 
 const FC_VAZIA: FeatureCollection = { type: "FeatureCollection", features: [] };
@@ -291,9 +278,8 @@ export function MapaEleitoral(props: Props) {
   const noEscopo = (uf: string) => (scope.uf ? uf === scope.uf : scope.regiao ? regiaoDaUf[uf] === scope.regiao : true);
 
   const dom = useMemo<[number, number]>(() => {
-    if (camada === "margem" || camada === "virada") return [0, 1];
-    if (nivel === "estados") return dominio(Object.entries(ufStats).filter(([u]) => u !== "ZZ").map(([, s]) => valorCamada(camada, s)));
-    return dominio(municipios.filter((m) => m.uf !== "ZZ" && passaFiltro(m) && noEscopo(m.uf)).map((m) => valorCamada(camada, m)));
+    if (nivel === "estados") return dominioCamada(camada, Object.entries(ufStats).filter(([u]) => u !== "ZZ").map(([, s]) => s));
+    return dominioCamada(camada, municipios.filter((m) => m.uf !== "ZZ" && passaFiltro(m) && noEscopo(m.uf)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [municipios, camada, nivel, filtroKey, scope.uf, scope.regiao, ufStats]);
 
@@ -301,7 +287,7 @@ export function MapaEleitoral(props: Props) {
     if (!s) return p.vazio;
     if (camada === "margem") return corMargem(margem(s), p);
     if (camada === "virada") return viradaCor(virada(t1?.lula ?? 0, t1?.flavio ?? 0, s), p);
-    return corSeq(valorCamada(camada, s), dom[0], dom[1], camada === "pos17" ? p.pos17Alto : p.seqAlto, p);
+    return corCamada(camada, valorCamada(camada, s), dom, p);
   }
 
   const fcMunBr = useMemo<FeatureCollection>(() => ({
@@ -359,21 +345,26 @@ export function MapaEleitoral(props: Props) {
   const locais = useMemo(() => {
     if (!detalhe || !selecionado || detalhe.cd_tse !== selecionado.cdTse) return [];
     return detalhe.locais
-      .map((l, i) => ({ l, i, s: statsLocal(l.secoes) }))
+      .map((l, i) => ({ l, i, s: statsSecoes(l.secoes) }))
       .filter((x) => x.l.lat != null && x.l.lon != null);
   }, [detalhe, selecionado]);
 
   const fcLocais = useMemo<FeatureCollection<Point>>(() => {
     const max = Math.max(1, ...locais.map((x) => x.s.comp));
+    // camadas de biometria colorem os locais também; as demais mostram o resultado
+    const bio = camadaBio(camada);
+    const domLocais = bio ? dominioCamada(camada, locais.map((x) => x.s)) : dom;
+    const corLocal = (s: Stats) => (bio ? corCamada(camada, valorCamada(camada, s), domLocais, paleta) : corMargem(margem(s), paleta));
     return {
       type: "FeatureCollection",
       features: locais.map((x) => ({
         type: "Feature" as const,
         geometry: { type: "Point" as const, coordinates: [x.l.lon as number, x.l.lat as number] },
-        properties: { i: x.i, r: Math.sqrt(x.s.comp / max), c: corMargem(margem(x.s), paleta), pos17: x.s.pos17 },
+        properties: { i: x.i, r: Math.sqrt(x.s.comp / max), c: corLocal(x.s), pos17: bio ? 0 : x.s.pos17 },
       })),
     };
-  }, [locais, paleta]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locais, paleta, camada]);
 
   const fcPontos = useMemo<FeatureCollection<Point>>(() => ({
     type: "FeatureCollection",
@@ -595,7 +586,7 @@ export function MapaEleitoral(props: Props) {
         <BotaoMapa rotulo="Afastar" onClick={() => mapa.current?.zoomOut()}><Minus className="h-4 w-4" /></BotaoMapa>
         <BotaoMapa rotulo="Ver Brasil inteiro" onClick={props.onBrasil}><Locate className="h-4 w-4" /></BotaoMapa>
       </div>
-      {tip && <Tooltip {...tip} />}
+      {tip && <Tooltip {...tip} bio={camadaBio(camada)} />}
     </div>
   );
 }
@@ -609,7 +600,7 @@ function BotaoMapa({ rotulo, onClick, children }: { rotulo: string; onClick: () 
   );
 }
 
-function Tooltip({ x, y, largura, d }: { x: number; y: number; largura: number; d: TipData }) {
+function Tooltip({ x, y, largura, d, bio }: { x: number; y: number; largura: number; d: TipData; bio: boolean }) {
   const v = vencedor(d.s);
   const p = pctLula(d.s);
   const esquerda = x > largura - 280;
@@ -637,6 +628,12 @@ function Tooltip({ x, y, largura, d }: { x: number; y: number; largura: number; 
           <p>1º turno · Lula {pct(t1p)} · Flávio {pct(1 - t1p)}</p>
         )}
         <p>{num(d.s.comp)} votantes · {pp(margem(d.s))}</p>
+        {bio && (
+          <p className="font-medium text-ink-2">
+            Sem biometria · 1º {pct(pctSem1(d.s))} → 2º {pct(pctSem2(d.s))}{" "}
+            <span className="text-muted">({ppSinal(deltaSem(d.s))})</span>
+          </p>
+        )}
         {d.nota && <p className="text-late-ink font-medium">{d.nota}</p>}
       </div>
     </div>
