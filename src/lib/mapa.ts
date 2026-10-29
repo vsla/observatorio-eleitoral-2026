@@ -64,12 +64,17 @@ export interface Stats {
   sem1: number;
   hab2: number;
   sem2: number;
+  /** parte de "sem": tinha digital cadastrada e a urna não reconheceu (o número dos boletins de urna) */
+  fal1: number;
+  fal2: number;
 }
 
-const CAMPOS_STATS = ["secoes", "aptos", "comp", "lula", "flavio", "bn", "pos17", "hab1", "sem1", "hab2", "sem2"] as const;
+const CAMPOS_STATS = [
+  "secoes", "aptos", "comp", "lula", "flavio", "bn", "pos17", "hab1", "sem1", "hab2", "sem2", "fal1", "fal2",
+] as const;
 
 export const statsVazio = (): Stats =>
-  ({ secoes: 0, aptos: 0, comp: 0, lula: 0, flavio: 0, bn: 0, pos17: 0, hab1: 0, sem1: 0, hab2: 0, sem2: 0 });
+  ({ secoes: 0, aptos: 0, comp: 0, lula: 0, flavio: 0, bn: 0, pos17: 0, hab1: 0, sem1: 0, hab2: 0, sem2: 0, fal1: 0, fal2: 0 });
 
 export function toStats(a: number[], offset = 0): Stats {
   const s = statsVazio();
@@ -88,6 +93,7 @@ export function statsSecao(r: SecaoRow): Stats {
   return {
     secoes: 1, aptos: r[2] ?? 0, comp: r[3] ?? 0, lula: r[4] ?? 0, flavio: r[5] ?? 0, bn: r[6] ?? 0,
     pos17: r[7] ?? 0, hab1: r[13] ?? 0, sem1: r[14] ?? 0, hab2: r[15] ?? 0, sem2: r[16] ?? 0,
+    fal1: r[19] ?? 0, fal2: r[20] ?? 0,
   };
 }
 
@@ -103,6 +109,40 @@ export const pctSem1 = (s: Stats) => (s.hab1 ? s.sem1 / s.hab1 : NaN);
 export const pctSem2 = (s: Stats) => (s.hab2 ? s.sem2 / s.hab2 : NaN);
 /** variação da fatia sem biometria do 1º para o 2º turno (fração; ×100 = p.p.) */
 export const deltaSem = (s: Stats) => pctSem2(s) - pctSem1(s);
+
+/**
+ * Medidas de biometria. "Sem digital" = todo eleitor liberado sem reconhecimento da digital;
+ * divide-se em "digital falhou" (tinha cadastro) e "sem cadastro" (a urna nem pede a digital).
+ */
+export type MedidaBio = "falha" | "sem_cadastro" | "total";
+
+export const MEDIDA_BIO: Record<MedidaBio, { label: string; curto: string; desc: string }> = {
+  falha: {
+    label: "Digital falhou", curto: "Falhou",
+    desc: "Tinha biometria cadastrada, a urna pediu a digital (até 4 tentativas) e não reconheceu; o mesário liberou pelo ano de nascimento. É o número dos boletins de urna citado na imprensa.",
+  },
+  sem_cadastro: {
+    label: "Sem biometria cadastrada", curto: "Sem cadastro",
+    desc: "A urna nem pediu a digital: eleitor sem biometria no cadastro (vota com documento com foto). Inclui o exterior, onde não se usa biometria.",
+  },
+  total: {
+    label: "Total sem digital", curto: "Sem digital",
+    desc: "Todos os liberados sem reconhecimento da digital: digital falhou + sem biometria cadastrada.",
+  },
+};
+
+export function qtdBio(s: Stats, m: MedidaBio, turno: 1 | 2): number {
+  const sem = turno === 1 ? s.sem1 : s.sem2;
+  const fal = turno === 1 ? s.fal1 : s.fal2;
+  return m === "falha" ? fal : m === "total" ? sem : Math.max(0, sem - fal);
+}
+
+export const pctBio = (s: Stats, m: MedidaBio, turno: 1 | 2) => {
+  const hab = turno === 1 ? s.hab1 : s.hab2;
+  return hab ? qtdBio(s, m, turno) / hab : NaN;
+};
+
+export const deltaBio = (s: Stats, m: MedidaBio) => pctBio(s, m, 2) - pctBio(s, m, 1);
 export const vencedor = (s: Stats): "lula" | "flavio" | "empate" | null =>
   validos(s) === 0 ? null : s.lula > s.flavio ? "lula" : s.flavio > s.lula ? "flavio" : "empate";
 
@@ -193,13 +233,15 @@ export interface MunDetalheJson {
 /**
  * [zona, secao, aptos, comp, lula, flavio, bn, pos17, ultimo_voto, abertura, primeiro_voto,
  *  votos por hora 6h..21h (Brasília), horário de cada voto após 17h,
- *  habilitados 1º turno, sem biometria 1º, habilitados 2º, sem biometria 2º, Lula 1º turno, Flávio 1º turno]
+ *  habilitados 1º turno, sem biometria 1º, habilitados 2º, sem biometria 2º, Lula 1º turno, Flávio 1º turno,
+ *  digital falhou 1º, digital falhou 2º]
  * Campos do log são null quando a seção não tem log publicado (ou o log não guardou o 1º turno).
  */
 export type SecaoRow = [
   number, number, number, number, number, number, number,
   number | null, number | null, number | null, number | null, number[] | null, number[] | null,
   number | null, number | null, number | null, number | null, number | null, number | null,
+  number | null, number | null,
 ];
 
 // ---------- Geografia ----------
@@ -256,7 +298,8 @@ export const SUBGRUPO_NOTA: Record<Subgrupo, string> = {
 // ---------- Camadas e cores ----------
 
 export type Camada =
-  | "margem" | "virada" | "abstencao" | "branco_nulo" | "pos17" | "sem_bio1" | "sem_bio2" | "sem_bio_delta";
+  | "margem" | "virada" | "abstencao" | "branco_nulo" | "pos17"
+  | "falha1" | "falha2" | "falha_delta" | "sem_bio1" | "sem_bio2" | "sem_bio_delta";
 
 export const CAMADAS: { id: Camada; label: string; desc: string }[] = [
   { id: "margem", label: "Vencedor e margem", desc: "Cor = quem venceu; intensidade = margem sobre os votos válidos." },
@@ -264,12 +307,25 @@ export const CAMADAS: { id: Camada; label: string; desc: string }[] = [
   { id: "abstencao", label: "Abstenção", desc: "Eleitores aptos que não compareceram." },
   { id: "branco_nulo", label: "Brancos e nulos", desc: "Brancos + nulos sobre o comparecimento." },
   { id: "pos17", label: "Votos após 17h", desc: "Votos registrados no log da urna após 17h (Brasília), sobre o comparecimento." },
-  { id: "sem_bio2", label: "Sem biometria · 2º turno", desc: "Eleitores liberados pelo mesário sem reconhecimento da digital, sobre os habilitados no log. Mesma escala do 1º turno." },
-  { id: "sem_bio1", label: "Sem biometria · 1º turno", desc: "Eleitores liberados pelo mesário sem reconhecimento da digital, sobre os habilitados no log. Mesma escala do 2º turno." },
-  { id: "sem_bio_delta", label: "Sem biometria · variação 1º → 2º", desc: "Diferença, em pontos percentuais, da fatia sem biometria entre o 1º e o 2º turno." },
+  { id: "falha2", label: "Digital falhou · 2º turno", desc: "Tinha biometria cadastrada e a urna não reconheceu a digital, sobre os habilitados no log. Mesma escala do 1º turno." },
+  { id: "falha1", label: "Digital falhou · 1º turno", desc: "Tinha biometria cadastrada e a urna não reconheceu a digital, sobre os habilitados no log. Mesma escala do 2º turno." },
+  { id: "falha_delta", label: "Digital falhou · variação 1º → 2º", desc: "Diferença, em pontos percentuais, da fatia com digital recusada entre o 1º e o 2º turno." },
+  { id: "sem_bio2", label: "Total sem digital · 2º turno", desc: "Todos os liberados sem reconhecimento da digital (falha + sem biometria cadastrada), sobre os habilitados no log. Mesma escala do 1º turno." },
+  { id: "sem_bio1", label: "Total sem digital · 1º turno", desc: "Todos os liberados sem reconhecimento da digital (falha + sem biometria cadastrada), sobre os habilitados no log. Mesma escala do 2º turno." },
+  { id: "sem_bio_delta", label: "Total sem digital · variação 1º → 2º", desc: "Diferença, em pontos percentuais, da fatia sem digital entre o 1º e o 2º turno." },
 ];
 
-export const camadaBio = (c: Camada) => c.startsWith("sem_bio");
+/** Camadas de biometria: medida e turno ("d" = variação). */
+export const CAMADA_BIO: Partial<Record<Camada, { m: MedidaBio; t: 1 | 2 | "d"; }>> = {
+  falha1: { m: "falha", t: 1 }, falha2: { m: "falha", t: 2 }, falha_delta: { m: "falha", t: "d" },
+  sem_bio1: { m: "total", t: 1 }, sem_bio2: { m: "total", t: 2 }, sem_bio_delta: { m: "total", t: "d" },
+};
+
+export const camadaBio = (c: Camada) => c in CAMADA_BIO;
+const camadaDiv = (c: Camada) => CAMADA_BIO[c]?.t === "d";
+
+/** Camada do 2º turno de uma medida (para abrir o mapa a partir do painel). */
+export const camadaDaMedida = (m: MedidaBio): Camada => (m === "falha" ? "falha2" : "sem_bio2");
 
 function hexToRgb(h: string): [number, number, number] {
   const n = parseInt(h.slice(1), 16);
@@ -337,19 +393,20 @@ export function corDiv(v: number, max: number, p: Paleta = PALETA.light): string
 /** Domínio de uma camada sobre um conjunto de unidades (municípios, estados, locais). */
 export function dominioCamada(c: Camada, itens: Stats[]): [number, number] {
   if (c === "margem" || c === "virada") return [0, 1];
-  if (c === "sem_bio_delta") {
-    const a = itens.map((s) => Math.abs(deltaSem(s))).filter(Number.isFinite).sort((x, y) => x - y);
+  const b = CAMADA_BIO[c];
+  if (b?.t === "d") {
+    const a = itens.map((s) => Math.abs(deltaBio(s, b.m))).filter(Number.isFinite).sort((x, y) => x - y);
     const m = a.length ? a[Math.floor(a.length * 0.98)] : 0;
     return [-(m || 0.01), m || 0.01];
   }
   // 1º e 2º turno na mesma escala, para a comparação visual valer
-  if (camadaBio(c)) return dominio(itens.flatMap((s) => [pctSem1(s), pctSem2(s)]));
+  if (b) return dominio(itens.flatMap((s) => [pctBio(s, b.m, 1), pctBio(s, b.m, 2)]));
   return dominio(itens.map((s) => valorCamada(c, s)));
 }
 
 /** Cor de um valor numa camada não categórica. */
 export function corCamada(c: Camada, v: number, dom: [number, number], p: Paleta): string {
-  if (c === "sem_bio_delta") return corDiv(v, dom[1], p);
+  if (camadaDiv(c)) return corDiv(v, dom[1], p);
   const alto = c === "pos17" ? p.pos17Alto : camadaBio(c) ? p.bioAlto : p.seqAlto;
   return corSeq(v, dom[0], dom[1], alto, p);
 }
@@ -377,14 +434,11 @@ export function valorCamada(c: Camada, s: Stats): number {
       return pctBrancoNulo(s);
     case "pos17":
       return pctPos17(s);
-    case "sem_bio1":
-      return pctSem1(s);
-    case "sem_bio2":
-      return pctSem2(s);
-    case "sem_bio_delta":
-      return deltaSem(s);
-    default:
-      return NaN;
+    default: {
+      const b = CAMADA_BIO[c];
+      if (!b) return NaN;
+      return b.t === "d" ? deltaBio(s, b.m) : pctBio(s, b.m, b.t);
+    }
   }
 }
 

@@ -14,7 +14,7 @@ import { useJsonData } from "@/hooks/useJsonData";
 import { useTema } from "@/hooks/useTema";
 import {
   MAPA_BASE, NOME, PALETA, UF_IBGE, UF_NOME,
-  camadaBio, corCamada, corMargem, deltaSem, dominioCamada, margem, num, pct, pctLula, pctSem1, pctSem2, pp, ppSinal,
+  camadaBio, corCamada, corMargem, deltaBio, dominioCamada, margem, num, pct, pctBio, pctLula, pp, ppSinal,
   statsSecoes, toStats, valorCamada, vencedor, virada, viradaCor,
   type Camada, type LocalEspecial, type Municipio, type MunDetalheJson, type Paleta, type ResumoJson,
   type Stats, type Tema,
@@ -629,10 +629,16 @@ function Tooltip({ x, y, largura, d, bio }: { x: number; y: number; largura: num
         )}
         <p>{num(d.s.comp)} votantes · {pp(margem(d.s))}</p>
         {bio && (
-          <p className="font-medium text-ink-2">
-            Sem biometria · 1º {pct(pctSem1(d.s))} → 2º {pct(pctSem2(d.s))}{" "}
-            <span className="text-muted">({ppSinal(deltaSem(d.s))})</span>
-          </p>
+          <>
+            <p className="font-medium text-ink-2">
+              Digital falhou · 1º {pct(pctBio(d.s, "falha", 1))} → 2º {pct(pctBio(d.s, "falha", 2))}{" "}
+              <span className="text-muted">({ppSinal(deltaBio(d.s, "falha"))})</span>
+            </p>
+            <p>
+              Total sem digital · 1º {pct(pctBio(d.s, "total", 1))} → 2º {pct(pctBio(d.s, "total", 2))}{" "}
+              <span className="text-muted">({ppSinal(deltaBio(d.s, "total"))})</span>
+            </p>
+          </>
         )}
         {d.nota && <p className="text-late-ink font-medium">{d.nota}</p>}
       </div>

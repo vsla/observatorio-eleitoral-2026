@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Search, Share2 } from "lucide-react";
 import { formatTime } from "@/lib/format";
 import {
-  SUBGRUPO_LABEL, deltaSem, margem, num, pct, pctLula, pctSem1, pctSem2, pp, ppSinal, statsSecao, statsSecoes,
+  SUBGRUPO_LABEL, deltaBio, margem, num, pct, pctBio, pctLula, pp, ppSinal, statsSecao, statsSecoes,
   type MunDetalheJson, type SecaoRow,
 } from "@/lib/mapa";
 import { BarraResultado } from "./BarraResultado";
@@ -123,7 +123,7 @@ function TabelaSecoes({ secoes, destaque, onSecao }: {
             <th className="px-2 py-1.5 text-right font-medium" style={{ color: "var(--flavio)" }}>Flávio</th>
             <th className="px-2 py-1.5 text-right font-medium" title="Votos após 17h (Brasília) no log da urna">Pós-17h</th>
             <th className="px-2 py-1.5 text-right font-medium" title="Horário do último voto (Brasília)">Últ. voto</th>
-            <th className="px-2 py-1.5 text-right font-medium" title="Eleitores sem biometria no 2º turno (variação desde o 1º)">S/ bio</th>
+            <th className="px-2 py-1.5 text-right font-medium" title="Digital recusada pela urna no 2º turno (variação desde o 1º)">Falhou</th>
             {onSecao && <th className="w-6"><span className="sr-only">Compartilhar</span></th>}
           </tr>
         </thead>
@@ -131,19 +131,19 @@ function TabelaSecoes({ secoes, destaque, onSecao }: {
           {secoes.map((r) => {
             const s = statsSecao(r);
             const ativa = destaque?.zona === r[0] && destaque?.secao === r[1];
-            const d = deltaSem(s);
+            const d = deltaBio(s, "falha");
             return (
               <tr key={`${r[0]}-${r[1]}`}
                 className={`border-t border-line ${onSecao ? "cursor-pointer hover:bg-soft-2" : ""} ${ativa ? "bg-accent-soft" : ""}`}
                 onClick={onSecao ? () => onSecao(r) : undefined}
-                title={`${num(s.comp)} votantes · ${pp(margem(s))} · Lula ${pct(pctLula(s))} · sem biometria 1º ${pct(pctSem1(s))} → 2º ${pct(pctSem2(s))}`}>
+                title={`${num(s.comp)} votantes · ${pp(margem(s))} · Lula ${pct(pctLula(s))} · digital falhou 1º ${pct(pctBio(s, "falha", 1))} → 2º ${pct(pctBio(s, "falha", 2))} · total sem digital 2º ${pct(pctBio(s, "total", 2))}`}>
                 <td className="px-2 py-1">{r[0]}/{r[1]}</td>
                 <td className="px-2 py-1 text-right">{num(s.lula)}</td>
                 <td className="px-2 py-1 text-right">{num(s.flavio)}</td>
                 <td className={`px-2 py-1 text-right ${s.pos17 > 0 ? "text-late-ink" : ""}`}>{r[7] ?? "—"}</td>
                 <td className="px-2 py-1 text-right">{r[8] != null ? formatTime(r[8]) : "—"}</td>
                 <td className="whitespace-nowrap px-2 py-1 text-right">
-                  {pct(pctSem2(s), 0)}
+                  {pct(pctBio(s, "falha", 2), 0)}
                   {Number.isFinite(d) && Math.abs(d) >= 0.005 && (
                     <span className="ml-1 text-[10px] text-muted">{ppSinal(d, 0).replace(" p.p.", "")}</span>
                   )}

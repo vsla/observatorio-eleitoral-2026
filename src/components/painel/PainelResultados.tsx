@@ -7,8 +7,9 @@ import { useJsonData } from "@/hooks/useJsonData";
 import { useTema } from "@/hooks/useTema";
 import {
   CAMADAS, MAPA_BASE, MARGEM_MAX, PALETA, REGIOES, SUBGRUPO_LABEL, UF_NOME, VIRADA_LABEL,
-  camadaBio, corCamada, corMargem, deltaSem, dominioCamada, margem, num, parseEspeciais, parseMunicipios, pct,
-  pctAbstencao, pctBrancoNulo, pctLula, pctPos17, pctSem1, pctSem2, pp, ppSinal, somar, statsSecoes,
+  CAMADA_BIO, camadaBio, camadaDaMedida, corCamada, corMargem, deltaBio, dominioCamada, margem, num, parseEspeciais,
+  parseMunicipios, pct,
+  pctAbstencao, pctBio, pctBrancoNulo, pctLula, pctPos17, pp, ppSinal, somar, statsSecoes,
   toStats, vencedor, viradaCor,
   type Camada, type LocalEspecial, type MunDetalheJson, type Municipio, type MunicipiosJson,
   type PerfilJson, type ResumoJson, type SecaoRow, type Stats, type Subgrupo, type Virada,
@@ -274,9 +275,16 @@ export function PainelResultados() {
                     <Dado k="Seções" v={num(escopoStats.secoes)} />
                     <Dado k="Após 17h" v={num(escopoStats.pos17)} destaque={escopoStats.pos17 > 0}
                       titulo={`${pct(pctPos17(escopoStats), 3)} do comparecimento${!uf && !regiao ? " (inclui exterior em hora local)" : ""}`} />
-                    <Dado k="Sem bio · 1º" v={pct(pctSem1(escopoStats))} titulo={`${num(escopoStats.sem1)} de ${num(escopoStats.hab1)} eleitores habilitados no log`} />
-                    <Dado k="Sem bio · 2º" v={pct(pctSem2(escopoStats))} titulo={`${num(escopoStats.sem2)} de ${num(escopoStats.hab2)} eleitores habilitados no log`} />
-                    <Dado k="Variação" v={ppSinal(deltaSem(escopoStats), 2)} titulo="Fatia sem biometria: 2º turno menos 1º turno" />
+                    <Dado k="Digital falhou · 1º" v={pct(pctBio(escopoStats, "falha", 1))}
+                      titulo={`${num(escopoStats.fal1)} de ${num(escopoStats.hab1)}: tinham biometria e a urna não reconheceu`} />
+                    <Dado k="Digital falhou · 2º" v={pct(pctBio(escopoStats, "falha", 2))}
+                      titulo={`${num(escopoStats.fal2)} de ${num(escopoStats.hab2)}: tinham biometria e a urna não reconheceu`} />
+                    <Dado k="Variação" v={ppSinal(deltaBio(escopoStats, "falha"), 2)} titulo="Digital falhou: 2º turno menos 1º turno" />
+                    <Dado k="Sem digital · 1º" v={pct(pctBio(escopoStats, "total", 1))}
+                      titulo={`${num(escopoStats.sem1)} de ${num(escopoStats.hab1)}: falha + sem biometria cadastrada`} />
+                    <Dado k="Sem digital · 2º" v={pct(pctBio(escopoStats, "total", 2))}
+                      titulo={`${num(escopoStats.sem2)} de ${num(escopoStats.hab2)}: falha + sem biometria cadastrada`} />
+                    <Dado k="Variação" v={ppSinal(deltaBio(escopoStats, "total"), 2)} titulo="Total sem digital: 2º turno menos 1º turno" />
                   </dl>
                 </div>
 
@@ -316,13 +324,14 @@ export function PainelResultados() {
 
             <div id={SECTIONS.BIOMETRIA} className="mx-auto mt-16 max-w-6xl">
               <Cabecalho kicker="1º × 2º turno" titulo="Quem votou sem biometria">
-                Eleitores liberados pelo mesário sem reconhecimento da digital, contados no log de cada urna.
-                Escopo: <strong className="text-ink">{uf ? UF_NOME[uf] : regiao && regiao !== EXTERIOR ? regiao : "Brasil"}</strong>.
+                Eleitores liberados pelo mesário sem reconhecimento da digital, contados no log de cada urna e separados
+                entre quem tinha biometria e teve a digital recusada (o número dos boletins de urna) e quem não tem
+                biometria cadastrada. Escopo: <strong className="text-ink">{uf ? UF_NOME[uf] : regiao && regiao !== EXTERIOR ? regiao : "Brasil"}</strong>.
                 Clique num {uf ? "município" : "estado"} para abrir no mapa; dentro do município, toque numa seção para compartilhar.
               </Cabecalho>
               <BiometriaPanel resumo={resumo} municipios={municipios} scope={scope} regiaoDaUf={regiaoDaUf}
-                onUf={(u) => { irUf(u); setCamada("sem_bio2"); document.getElementById(SECTIONS.RESULTS)?.scrollIntoView({ behavior: "smooth" }); }}
-                onMun={(m) => { irMun(m); setCamada("sem_bio2"); document.getElementById(SECTIONS.RESULTS)?.scrollIntoView({ behavior: "smooth" }); }}
+                onUf={(u, m) => { irUf(u); setCamada(camadaDaMedida(m)); document.getElementById(SECTIONS.RESULTS)?.scrollIntoView({ behavior: "smooth" }); }}
+                onMun={(x, m) => { irMun(x); setCamada(camadaDaMedida(m)); document.getElementById(SECTIONS.RESULTS)?.scrollIntoView({ behavior: "smooth" }); }}
                 onCompartilhar={() => { setMun(null); setLocalAberto(null); setSecaoSel(null); setCartao("escopo"); }} />
             </div>
 
@@ -693,7 +702,7 @@ function Legenda({ camada, lista, nivel, resumo, mun, detalhe, subgrupo, onLimpa
         : lista;
     const dom = dominioCamada(camada, itens);
     const [lo, hi] = dom;
-    const div = camada === "sem_bio_delta";
+    const div = CAMADA_BIO[camada]?.t === "d";
     const d = camada === "pos17" ? 3 : 1;
     corpo = (
       <>
@@ -726,7 +735,7 @@ function Legenda({ camada, lista, nivel, resumo, mun, detalhe, subgrupo, onLimpa
         <p className="mt-1.5 max-w-60 text-[10px] leading-snug text-muted">
           {mun
             ? camadaBio(camada)
-              ? `Círculos = locais de votação, cor = ${camada === "sem_bio_delta" ? "variação" : "fatia"} sem biometria (tamanho = votantes).`
+              ? `Círculos = locais de votação, cor = ${CAMADA_BIO[camada]?.t === "d" ? "variação" : "fatia"} ${CAMADA_BIO[camada]?.m === "falha" ? "com digital recusada" : "sem digital"} (tamanho = votantes).`
               : "Círculos = locais de votação (tamanho = votantes; borda amarela = teve voto após 17h)."
             : camada === "margem" ? "Intensidade = margem sobre os votos válidos." : desc}
         </p>

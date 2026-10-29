@@ -5,7 +5,7 @@
 
 import { formatTime } from "./format";
 import {
-  deltaSem, num, pct, pctBrancoNulo, pctLula, pctSem1, pctSem2, ppSinal, statsSecao, type SecaoRow, type Stats,
+  deltaBio, num, pct, pctBio, pctBrancoNulo, pctLula, ppSinal, statsSecao, type SecaoRow, type Stats,
 } from "./mapa";
 import { linkPara } from "./url";
 
@@ -205,19 +205,19 @@ export async function desenharCartao(d: DadosCartao, formato: Formato): Promise<
   }
 
   // ---- biometria ----
-  const p1 = pctSem1(s);
-  const p2 = pctSem2(s);
+  const p1 = pctBio(s, "falha", 1);
+  const p2 = pctBio(s, "falha", 2);
   if (Number.isFinite(p1) || Number.isFinite(p2)) {
     y += 78;
     ctx.fillStyle = c.line;
     ctx.fillRect(X, y - 44, LX, 2);
     ctx.fillStyle = c.ink;
     ctx.font = `600 34px ${f.sans}`;
-    ctx.fillText("Votaram sem biometria", X, y);
+    ctx.fillText("Digital recusada pela urna", X, y);
     ctx.textAlign = "right";
     ctx.fillStyle = c.ink2;
     ctx.font = `600 30px ${f.sans}`;
-    ctx.fillText(ppSinal(deltaSem(s)), X + LX, y);
+    ctx.fillText(ppSinal(deltaBio(s, "falha")), X + LX, y);
     ctx.textAlign = "left";
 
     const escala = Math.min(1, Math.max(Number.isFinite(p1) ? p1 : 0, Number.isFinite(p2) ? p2 : 0, 0.01) * 1.15);
@@ -225,8 +225,8 @@ export async function desenharCartao(d: DadosCartao, formato: Formato): Promise<
     const valW = 300;
     const barW = LX - rotW - valW;
     const linhas: [string, number, number, number, string][] = [
-      ["1º turno", p1, s.sem1, s.hab1, c.bio1],
-      ["2º turno", p2, s.sem2, s.hab2, c.bio],
+      ["1º turno", p1, s.fal1, s.hab1, c.bio1],
+      ["2º turno", p2, s.fal2, s.hab2, c.bio],
     ];
     for (const [rot, v, n, tot, cor] of linhas) {
       y += 62;
@@ -241,6 +241,14 @@ export async function desenharCartao(d: DadosCartao, formato: Formato): Promise<
       ctx.fillText(Number.isFinite(v) ? `${pct(v)} · ${num(n)} de ${num(tot)}` : "sem log", X + LX, y);
       ctx.textAlign = "left";
     }
+    // o total inclui quem não tem biometria cadastrada (a urna nem pede a digital)
+    y += 50;
+    ctx.font = `400 24px ${f.sans}`;
+    ctx.fillStyle = c.muted;
+    const t1 = pctBio(s, "total", 1);
+    const t2 = pctBio(s, "total", 2);
+    ctx.fillText(
+      `Total liberado sem digital (inclui sem cadastro): 1º ${pct(t1)} · 2º ${pct(t2)}`, X, y);
   }
 
   // ---- extras ----
@@ -249,7 +257,7 @@ export async function desenharCartao(d: DadosCartao, formato: Formato): Promise<
     ["Brancos e nulos", pct(pctBrancoNulo(s))],
     ...(d.extras ?? []),
   ].slice(0, 4) as [string, string][];
-  y += 110;
+  y += 90;
   const colW = LX / extras.length;
   extras.forEach(([k, v], i) => {
     ctx.font = `400 24px ${f.sans}`;

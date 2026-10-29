@@ -6,7 +6,7 @@ import { CheckCircle2, ExternalLink, Search, Share2, XCircle } from "lucide-reac
 import { useJsonData } from "@/hooks/useJsonData";
 import { SECTIONS } from "@/lib/constants";
 import {
-  MAPA_BASE, SUBGRUPO_LABEL, UF_NOME, deltaSem, num, parseMunicipios, pct, pctSem1, pctSem2, ppSinal, statsSecao,
+  MAPA_BASE, SUBGRUPO_LABEL, UF_NOME, num, parseMunicipios, pct, pctBio, qtdBio, statsSecao,
   type MunDetalheJson, type Municipio, type MunicipiosJson, type SecaoRow, type Subgrupo,
 } from "@/lib/mapa";
 import { hhmm, hhmmss, ouvirConfira, urlTseSecao } from "@/lib/site";
@@ -182,9 +182,10 @@ function DetalheSecao({ s, mun }: { s: SecaoSel; mun: Municipio }) {
       <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-sm">
         <D k="Lula" v={num(lula)} /><D k="Flávio" v={num(flavio)} />
         <D k="Brancos + nulos" v={num(bn)} /><D k="Comparecimento" v={`${num(comp)} de ${num(aptos)}`} />
-        <D k="Sem biometria · 1º turno" v={st.hab1 ? `${num(st.sem1)} (${pct(pctSem1(st))})` : "—"} />
-        <D k="Sem biometria · 2º turno" v={st.hab2 ? `${num(st.sem2)} (${pct(pctSem2(st))})` : "—"} />
-        <D k="Variação" v={ppSinal(deltaSem(st))} />
+        <D k="Digital falhou · 1º turno" v={st.hab1 ? `${num(st.fal1)} (${pct(pctBio(st, "falha", 1))})` : "—"} />
+        <D k="Digital falhou · 2º turno" v={st.hab2 ? `${num(st.fal2)} (${pct(pctBio(st, "falha", 2))})` : "—"} />
+        <D k="Sem cadastro biométrico · 2º" v={st.hab2 ? `${num(qtdBio(st, "sem_cadastro", 2))} (${pct(pctBio(st, "sem_cadastro", 2))})` : "—"} />
+        <D k="Total sem digital · 2º" v={st.hab2 ? `${num(st.sem2)} (${pct(pctBio(st, "total", 2))})` : "—"} />
       </dl>
 
       <div className="mt-6 pt-5 border-t border-line">
